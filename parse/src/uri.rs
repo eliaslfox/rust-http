@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 use nom::{
     branch::alt,
     bytes::complete::tag,
@@ -249,7 +247,6 @@ impl<'a> Fragment<'a> {
     }
 }
 
-/// Uri represents a parsed URI.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Uri<'a> {
     scheme: Scheme<'a>,
@@ -277,126 +274,41 @@ impl<'a> Uri<'a> {
         }
     }
 
-    /// Get the scheme of an URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com/aa/bb")?;
-    /// assert_eq!(uri.scheme(), "http");
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn scheme(&self) -> &'a str {
         self.scheme.0
     }
 
-    /// Get the user info part of an URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"ftp://admin@example.com/aa/bb")?;
-    /// assert_eq!(uri.user_info(), Some("admin"));
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn user_info(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.user_info).map(|x| x.0)
     }
 
-    /// Get the host of an URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com")?;
-    /// assert_eq!(uri.host(), Some("example.com"));
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn host(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.host).map(|x| x.0)
     }
 
-    /// Get the port of an URI if it exists. This function will not return the default port of a
-    /// protocol if it is not specified in the URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com:8080")?;
-    /// assert_eq!(uri.port(), Some(8080));
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn port(&self) -> Option<u32> {
         self.authority.and_then(|x| x.port).map(|x| x.0)
     }
 
-    /// Get the path of an URI. If the path is empty or the root path then this function will
-    /// return an empty vector. If the URI does not have an authority such as `tel:+1-816-555-1212`
-    /// then the entire path will be in a single item vector.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com/aaa/bbb")?;
-    /// assert_eq!(uri.path(), vec!["aaa", "bbb"]);
-    ///
-    /// let (_, uri) = Uri::parse(b"tel:+1-816-555-1212")?;
-    /// assert_eq!(uri.path(), vec!["+1-816-555-1212"]);
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn path(&self) -> &'_ [&'a str] {
         &self.path.0[..]
     }
 
-    /// Get the query of an URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com:8080?test=1&a=b")?;
-    /// assert_eq!(uri.query(), Some("test=1&a=b"));
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
     #[inline]
     pub fn query(&self) -> Option<&'a str> {
         self.query.map(|x| x.0)
     }
-
-    /// Get the fragment of an URI.
-    ///
-    /// ```
-    /// # use parse::uri::Uri;
-    /// # use crate::parse::parse::HttpParseError;
-    ///
-    /// let (_, uri) = Uri::parse(b"http://example.com:8080?test=1&a=b#aa/bb")?;
-    /// assert_eq!(uri.fragment(), Some("aa/bb"));
-    ///
-    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
-    /// ```
 
     #[inline]
     pub fn fragment(&self) -> Option<&'a str> {
         self.fragment.map(|x| x.0)
     }
 
-    /// Parse an URI.
     pub fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri", |i| {
             let (i, scheme) = Scheme::parse(i)?;
