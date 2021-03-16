@@ -1,0 +1,9 @@
+[package]
+name = "parse"
+version = "0.1.0"
+authors = ["Elias Lawson-Fox <me@eliaslfox.com>"]
+edition = "2018"
+
+[dependencies]
+derive_more = "0.99.11"
+nom = "6.1.2"
