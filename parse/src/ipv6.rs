@@ -11,18 +11,40 @@ use nom::{
 use crate::ipv4::parse_ipv4;
 use crate::parse::{Input, ParseResult};
 
+/// Parse an ipv6 address using the syntax defined in
+/// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2). This function does not normalize
+/// ipv6 addresses, it only checks that they are valid.
+///
+/// See also: [RFC4291](https://tools.ietf.org/html/rfc4291)
+// IPv6address =                            6( h16 ":" ) ls32
+//                  /                       "::" 5( h16 ":" ) ls32
+//                  / [               h16 ] "::" 4( h16 ":" ) ls32
+//                  / [ *1( h16 ":" ) h16 ] "::" 3( h16 ":" ) ls32
+//                  / [ *2( h16 ":" ) h16 ] "::" 2( h16 ":" ) ls32
+//                  / [ *3( h16 ":" ) h16 ] "::"    h16 ":"   ls32
+//                  / [ *4( h16 ":" ) h16 ] "::"              ls32
+//                  / [ *5( h16 ":" ) h16 ] "::"              h16
+//                  / [ *6( h16 ":" ) h16 ] "::"
+pub fn parse_ipv6(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
+    alt((
+        parse_ipv6_1,
+        parse_ipv6_2,
+        parse_ipv6_3,
+        parse_ipv6_4,
+        parse_ipv6_4,
+        parse_ipv6_5,
+        parse_ipv6_6,
+        parse_ipv6_7,
+        parse_ipv6_8,
+        parse_ipv6_9,
+    ))(i)
+}
+
 // h16 = 1*4HEXDIG
 fn parse_h16(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     context("h16", |i| {
         verify(take_while1(is_hex_digit), |x: &[u8]| x.len() <= 4)(i)
     })(i)
-}
-
-// h16_colon = h16 ":"
-fn parse_h16_colon(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    let (i, (c, _)) = consumed(tuple((parse_h16, char(':'))))(i)?;
-
-    Ok((i, c))
 }
 
 // ls32 = ( h16 ":" h16 ) / IPv4address
@@ -34,6 +56,13 @@ fn parse_ls32(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
         );
         alt((parse_double_h16, parse_ipv4))(i)
     })(i)
+}
+
+// h16_colon = h16 ":"
+fn parse_h16_colon(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
+    let (i, (c, _)) = consumed(tuple((parse_h16, char(':'))))(i)?;
+
+    Ok((i, c))
 }
 
 // helper function used in some ipv6 rules
@@ -71,7 +100,7 @@ where
         let p1_res = p1(i);
         drop(p1);
 
-        if let Err(_) = p1_res {
+        if p1_res.is_err() {
             let p2_f = |i| {
                 let (i, _) = opt(parse_ipv6_pre_block(n))(i)?;
                 let (i, _) = tag("::")(i)?;
@@ -142,21 +171,6 @@ fn parse_ipv6_9(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     let (i, (c, _)) = consumed(tuple((opt(parse_ipv6_pre_block(6)), tag("::"))))(i)?;
 
     Ok((i, c))
-}
-
-pub fn parse_ipv6(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    alt((
-        parse_ipv6_1,
-        parse_ipv6_2,
-        parse_ipv6_3,
-        parse_ipv6_4,
-        parse_ipv6_4,
-        parse_ipv6_5,
-        parse_ipv6_6,
-        parse_ipv6_7,
-        parse_ipv6_8,
-        parse_ipv6_9,
-    ))(i)
 }
 
 #[cfg(test)]

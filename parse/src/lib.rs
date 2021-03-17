@@ -1,9 +1,9 @@
-//! Parse
+mod ipv4;
+mod ipv6;
+mod parse;
+mod uri;
 
-pub mod parse;
-
-/// Uri allows parsing URIs in the form of [RFC 3986](https://tools.ietf.org/html/rfc3986)
-pub mod uri;
-
-pub mod ipv4;
-pub mod ipv6;
+pub use crate::parse::HttpParseError;
+pub use ipv4::parse_ipv4;
+pub use ipv6::parse_ipv6;
+pub use uri::Uri;

@@ -13,8 +13,8 @@ use nom::{
 use crate::parse::{u8_to_u32, u8_to_utf8, Input, ParseResult};
 use crate::{ipv4::parse_ipv4, ipv6::parse_ipv6};
 
-// characters allowed in an URI and not given a reserved meaning
-// as defined by rfc3986 2.3
+// Characters allowed in an URI and not given a reserved meaning
+// as defined by rfc3986 2.3.
 fn uri_unreserved_character(i: u8) -> bool {
     if is_alphanumeric(i) {
         return true;
@@ -23,7 +23,7 @@ fn uri_unreserved_character(i: u8) -> bool {
     c == '-' || c == '.' || c == '_' || c == '~'
 }
 
-// characters valid as sub delimiters in an URI as defined by rfc3986 2.2
+// Characters valid as sub delimiters in an URI as defined by rfc3986 2.2.
 fn uri_sub_delimeter(i: u8) -> bool {
     let c = i.as_char();
     c == '!'
@@ -39,7 +39,7 @@ fn uri_sub_delimeter(i: u8) -> bool {
         || c == '='
 }
 
-// TODO: fix this
+// Allow % where url encoded character can be present.
 fn uri_encoded_character(i: u8) -> bool {
     i.as_char() == '%'
 }
@@ -48,7 +48,6 @@ fn uri_encoded_character(i: u8) -> bool {
 struct Scheme<'a>(&'a str);
 
 impl<'a> Scheme<'a> {
-    // Valid characters for a URI scheme as defined by rfc3986 3.1
     fn valid_character(i: u8) -> bool {
         if is_alphanumeric(i) {
             return true;
@@ -57,6 +56,7 @@ impl<'a> Scheme<'a> {
         c == '+' || c == '-' || c == '.'
     }
 
+    // Parse an URI scheme as defined by rfc3986 3.1.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
         context("uri scheme", |i| {
             let (i, scheme) = terminated(take_while(Self::valid_character), tag(":"))(i)?;
@@ -69,7 +69,6 @@ impl<'a> Scheme<'a> {
 struct UserInfo<'a>(&'a str);
 
 impl<'a> UserInfo<'a> {
-    // Valid characters for a URI userinfo subcomponent as defined by rfc3986 3.2.1
     fn valid_character(i: u8) -> bool {
         uri_unreserved_character(i)
             || uri_encoded_character(i)
@@ -77,6 +76,7 @@ impl<'a> UserInfo<'a> {
             || i.as_char() == ':'
     }
 
+    // Parse a URI user_info subcomponent as defined by rfc3986 3.2.1.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
         context("uri userinfo", |i| {
             let (i, user_info) = terminated(take_while(UserInfo::valid_character), tag("@"))(i)?;
@@ -90,7 +90,6 @@ impl<'a> UserInfo<'a> {
 struct Host<'a>(&'a str);
 
 impl<'a> Host<'a> {
-    // Valid characters to appear in a reg-name.
     fn valid_reg_name_character(i: u8) -> bool {
         uri_unreserved_character(i) || uri_encoded_character(i) || uri_sub_delimeter(i)
     }
@@ -144,6 +143,8 @@ impl<'a> Authority<'a> {
             port: port.map(Port),
         }
     }
+
+    // Parse an URI authority as defined by rfc3986 3.2
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri authority", |i| {
             let (i, _) = tag("//")(i)?;
@@ -190,9 +191,14 @@ impl<'a> Path<'a> {
 
             let mut path_utf8 = Vec::with_capacity(path.len());
             for path_segment in path {
+                // Skip path segments in the form of /./
+                if path_segment == b"." {
+                    continue;
+                }
                 path_utf8.push(u8_to_utf8(path_segment)?);
             }
 
+            // Remove trailing slashes
             let (i, _) = many0(tag("/"))(i)?;
 
             Ok((i, Path(path_utf8)))
@@ -207,6 +213,8 @@ impl<'a> Query<'a> {
     fn valid_query_char(i: u8) -> bool {
         Path::valid_path_segment_char(i) || i.as_char() == '/' || i.as_char() == '?'
     }
+
+    // Parse an URI authority as defined by rfc3986 3.4.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri query", |i| {
             let (i, query) = preceded(tag("?"), take_while(Self::valid_query_char))(i)?;
@@ -223,6 +231,8 @@ impl<'a> Fragment<'a> {
     fn valid_query_char(i: u8) -> bool {
         Path::valid_path_segment_char(i) || i.as_char() == '/' || i.as_char() == '?'
     }
+
+    // Parse an URI authority as defined by rfc3986 3.5.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri query", |i| {
             let (i, query) = preceded(tag("#"), take_while(Self::valid_query_char))(i)?;
@@ -232,6 +242,7 @@ impl<'a> Fragment<'a> {
     }
 }
 
+/// A parsed URI.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Uri<'a> {
     scheme: Scheme<'a>,
@@ -259,41 +270,138 @@ impl<'a> Uri<'a> {
         }
     }
 
+    /// Get the scheme of an URI.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com/aa/bb")?;
+    /// assert_eq!(uri.scheme(), "http");
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn scheme(&self) -> &'a str {
         self.scheme.0
     }
 
+    /// Get the user info part of an URI.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"ftp://admin@example.com/aa/bb")?;
+    /// assert_eq!(uri.user_info(), Some("admin"));
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn user_info(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.user_info).map(|x| x.0)
     }
 
+    /// Get the host of an URI.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com")?;
+    /// assert_eq!(uri.host(), Some("example.com"));
+    ///
+    /// let (_, uri) = Uri::parse(b"https://[::1]/files")?;
+    /// assert_eq!(uri.host(), Some("[::1]"));
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn host(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.host).map(|x| x.0)
     }
 
+    /// Get the port of an URI if it exists. This function will not return the default port of a
+    /// protocol if it is not specified in the URI.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com:8080")?;
+    /// assert_eq!(uri.port(), Some(8080));
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com")?;
+    /// assert_eq!(uri.port(), None);
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn port(&self) -> Option<u32> {
         self.authority.and_then(|x| x.port).map(|x| x.0)
     }
 
+    /// Get the path of an URI. If the path is empty or the root path then this function will
+    /// return an empty vector. If the URI does not have an authority such as `tel:+1-816-555-1212`
+    /// then the entire path will be in a single item vector.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com/aaa/bbb")?;
+    /// assert_eq!(uri.path(), vec!["aaa", "bbb"]);
+    ///
+    /// let (_, uri) = Uri::parse(b"tel:+1-816-555-1212")?;
+    /// assert_eq!(uri.path(), vec!["+1-816-555-1212"]);
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn path(&self) -> &'_ [&'a str] {
         &self.path.0[..]
     }
 
+    /// Get the query of an URI.
+    ///
+    /// ```
+    ///
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com:8080?test=1&a=b")?;
+    /// assert_eq!(uri.query(), Some("test=1&a=b"));
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn query(&self) -> Option<&'a str> {
         self.query.map(|x| x.0)
     }
 
+    /// Get the fragment of an URI.
+    ///
+    /// ```
+    /// # use parse::{Uri, HttpParseError};
+    ///
+    /// let (_, uri) = Uri::parse(b"http://example.com:8080?test=1&a=b#aa/bb")?;
+    /// assert_eq!(uri.fragment(), Some("aa/bb"));
+    ///
+    /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
+    /// ```
     #[inline]
     pub fn fragment(&self) -> Option<&'a str> {
         self.fragment.map(|x| x.0)
     }
 
+    /// Attempt to parse a buffer into an URI.
+    /// The implemented URI parsing is somewhat limited. Values are not lowercased and
+    /// thus the following will not compare as equal `http://EXAMPLE.com` and `http://example.com` even
+    /// though they are defined to be. Parsing also does not preform url decoding and will leave hex
+    /// encoded characters such as `%20` as is. Parsing does however implement path normalization by
+    /// removing path segments in the form of `/./` and stripping double and trailing slashes.
+    ///
+    /// The following will all compare equal:
+    /// - `http://example.com/a/b`
+    /// - `http://example.com/a//b`
+    /// - `http://example.com/a/./b`
+    /// - `http://example.com/a/b//`
+    ///
+    /// Parsing grammar and specification is taken from [RFC3986](https://tools.ietf.org/html/rfc3986).
     pub fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri", |i| {
             let (i, scheme) = Scheme::parse(i)?;
@@ -551,8 +659,26 @@ mod tests {
     #[test]
     #[should_panic]
     fn parse_uri_no_scheme() {
-        let url = b"http//example.com";
-        let result = Uri::parse(url);
+        let uri = b"http//example.com";
+        let result = Uri::parse(uri);
         let (_, _uri) = result.unwrap();
+    }
+
+    #[test]
+    fn parse_uri_path_normalization() {
+        let uri1 = b"http://example.com/a/b";
+        let uri2 = b"http://example.com/a//b";
+        let uri3 = b"http://example.com/a/./b";
+        let uri4 = b"http://example.com/a/b//";
+
+        let (_, uri1) = Uri::parse(uri1).unwrap();
+        let (_, uri2) = Uri::parse(uri2).unwrap();
+        let (_, uri3) = Uri::parse(uri3).unwrap();
+        let (_, uri4) = Uri::parse(uri4).unwrap();
+
+        assert_eq!(uri1.path(), vec!["a", "b"]);
+        assert_eq!(uri2.path(), vec!["a", "b"]);
+        assert_eq!(uri3.path(), vec!["a", "b"]);
+        assert_eq!(uri4.path(), vec!["a", "b"]);
     }
 }

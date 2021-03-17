@@ -1,4 +1,3 @@
-use derive_more::From;
 use nom::{
     error::ParseError,
     lib::std::str::{from_utf8, FromStr},
@@ -11,7 +10,7 @@ use std::str::Utf8Error;
  * Returning an error type other than nom::error::VerboseError will
  * cause location information to be lost.
  */
-#[derive(Debug, From)]
+#[derive(Debug, derive_more::From)]
 pub enum HttpParseError<I> {
     Nom(nom::error::VerboseError<I>),
     Utf8(Utf8Error),

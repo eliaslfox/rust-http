@@ -10,9 +10,10 @@ use nom::{
 
 use crate::parse::{Input, ParseResult};
 
-// Parse an ipv4 quad using the syntax defined by rfc3986 3.2.2
+/// Parse an ipv4 quad using the syntax defined by
+/// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2).
 pub fn parse_ipv4(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    context("ipv4 addr", |i| parse_ipv4_quad(i))(i)
+    context("ipv4 addr", parse_ipv4_quad)(i)
 }
 
 fn parse_ipv4_quad_section(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
