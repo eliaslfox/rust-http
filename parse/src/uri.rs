@@ -2,8 +2,8 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     bytes::complete::{take_while, take_while1},
-    character::{is_alphanumeric, is_digit, is_hex_digit},
-    combinator::opt,
+    character::{complete::char, is_alphanumeric, is_digit},
+    combinator::{consumed, map, opt},
     error::context,
     multi::{many0, many1},
     sequence::{preceded, terminated, tuple},
@@ -11,6 +11,7 @@ use nom::{
 };
 
 use crate::parse::{u8_to_u32, u8_to_utf8, Input, ParseResult};
+use crate::{ipv4::parse_ipv4, ipv6::parse_ipv6};
 
 // characters allowed in an URI and not given a reserved meaning
 // as defined by rfc3986 2.3
@@ -89,39 +90,23 @@ impl<'a> UserInfo<'a> {
 struct Host<'a>(&'a str);
 
 impl<'a> Host<'a> {
-    // Valid host subcomponents of an URI are defined as rfc3986 3.2.2. This implementation
-    // currently accepts some invalid ipv4 and ipv6 ips. It also does not implement the ip version
-    // extension format.
-
     // Valid characters to appear in a reg-name.
     fn valid_reg_name_character(i: u8) -> bool {
         uri_unreserved_character(i) || uri_encoded_character(i) || uri_sub_delimeter(i)
     }
 
-    // Parse ipv4
-    // TODO: actually parse ipv4
-    fn parse_ipv4(i: Input<'a>) -> ParseResult<'a, &'a [u8]> {
-        let (i, addr) = take_while1(|i| is_digit(i) || i.as_char() == '.')(i)?;
-        Ok((i, addr))
-    }
-
-    // Parse ipv6
-    // TODO: actually parse ipv6
-    fn parse_ipv6(i: Input<'a>) -> ParseResult<'a, &'a [u8]> {
-        let (i, (_, addr, _)) = tuple((
-            tag("["),
-            take_while1(|i| is_hex_digit(i) || i.as_char() == ':'),
-            tag("]"),
-        ))(i)?;
-        Ok((i, addr))
-    }
-
+    // Valid host subcomponents of an URI are defined as rfc3986 3.2.2.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
         context("uri host", |i| {
             let (i, host) = alt((
+                // check if the host is a valid ipv4 address first as ipv4 addresses are also valid
+                // reg-names
+                parse_ipv4,
                 take_while1(Self::valid_reg_name_character),
-                Self::parse_ipv4,
-                Self::parse_ipv6,
+                map(
+                    consumed(tuple((char('['), parse_ipv6, char(']')))),
+                    |(c, _)| c,
+                ),
             ))(i)?;
             let host = u8_to_utf8(host)?;
             Ok((i, Host(host)))
@@ -398,7 +383,7 @@ mod tests {
         let result = Host::parse(b"[::1]/aaa/bbb");
         let (_, host) = result.unwrap();
 
-        assert_eq!(host, Host("::1"));
+        assert_eq!(host, Host("[::1]"));
     }
 
     #[test]
@@ -416,7 +401,7 @@ mod tests {
         let result = Host::parse(b"[::1]:9000/aaa/bbb");
         let (_, host) = result.unwrap();
 
-        assert_eq!(host, Host("::1"));
+        assert_eq!(host, Host("[::1]"));
     }
 
     #[test]
@@ -561,5 +546,13 @@ mod tests {
             uri,
             Uri::new("tel", None, vec!["+1-816-555-1212"], None, None)
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_uri_no_scheme() {
+        let url = b"http//example.com";
+        let result = Uri::parse(url);
+        let (_, _uri) = result.unwrap();
     }
 }
