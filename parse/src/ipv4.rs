@@ -4,7 +4,6 @@ use nom::{
     bytes::complete::take_while1,
     character::{complete::char, is_digit},
     combinator::{consumed, verify},
-    error::context,
     sequence::tuple,
 };
 
@@ -13,7 +12,7 @@ use crate::parse::{Input, ParseResult};
 /// Parse an ipv4 quad using the syntax defined by
 /// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2).
 pub fn parse_ipv4(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    context("ipv4 addr", parse_ipv4_quad)(i)
+    parse_ipv4_quad(i)
 }
 
 fn parse_ipv4_quad_section(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
@@ -42,10 +41,11 @@ fn parse_ipv4_quad(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_no_alloc::*;
 
     #[test]
     fn test_parse_ipv4_quad() {
-        let result = parse_ipv4_quad(b"10.10.10.1");
+        let result = assert_no_alloc(|| parse_ipv4(b"10.10.10.1"));
         let (res, ipv4) = result.unwrap();
         assert_eq!(res.len(), 0);
         assert_eq!(ipv4, b"10.10.10.1");
@@ -53,22 +53,22 @@ mod tests {
 
     #[test]
     fn test_parse_ipv4_quad_big_numbers() {
-        let result = parse_ipv4_quad(b"10.0.0.999");
+        let result = assert_no_alloc(|| parse_ipv4(b"10.0.0.999"));
         assert!(result.is_err());
 
-        let result = parse_ipv4_quad(b"10.0.256.0");
+        let result = assert_no_alloc(|| parse_ipv4(b"10.0.256.0"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_ipv4_quad_invalid() {
-        let result = parse_ipv4_quad(b"10.0.0.2567");
+        let result = assert_no_alloc(|| parse_ipv4_quad(b"10.0.0.2567"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_ipv4_quad_short() {
-        let result = parse_ipv4_quad(b"10.1.1");
+        let result = assert_no_alloc(|| parse_ipv4_quad(b"10.1.1"));
         assert!(result.is_err());
     }
 }

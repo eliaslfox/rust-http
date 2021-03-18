@@ -3,13 +3,11 @@ use nom::{
     bytes::complete::{tag, take_while1},
     character::{complete::char, is_hex_digit},
     combinator::{consumed, map, opt, verify},
-    error::context,
-    multi::{count, many_m_n},
     sequence::tuple,
 };
 
 use crate::ipv4::parse_ipv4;
-use crate::parse::{Input, ParseResult};
+use crate::parse::{count_, many_m_n_, Input, ParseResult};
 
 /// Parse an ipv6 address using the syntax defined in
 /// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2). This function does not normalize
@@ -42,20 +40,16 @@ pub fn parse_ipv6(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 
 // h16 = 1*4HEXDIG
 fn parse_h16(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    context("h16", |i| {
-        verify(take_while1(is_hex_digit), |x: &[u8]| x.len() <= 4)(i)
-    })(i)
+    verify(take_while1(is_hex_digit), |x: &[u8]| x.len() <= 4)(i)
 }
 
 // ls32 = ( h16 ":" h16 ) / IPv4address
 fn parse_ls32(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    context("ls32", |i| {
-        let parse_double_h16 = map(
-            consumed(tuple((parse_h16, char(':'), parse_h16))),
-            |(c, _)| c,
-        );
-        alt((parse_double_h16, parse_ipv4))(i)
-    })(i)
+    let parse_double_h16 = map(
+        consumed(tuple((parse_h16, char(':'), parse_h16))),
+        |(c, _)| c,
+    );
+    alt((parse_double_h16, parse_ipv4))(i)
 }
 
 // h16_colon = h16 ":"
@@ -69,7 +63,7 @@ fn parse_h16_colon(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 // ipv6_pre_block = *N( h1 ":" ) h16
 fn parse_ipv6_pre_block(n: usize) -> impl Fn(Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     move |i: Input<'_>| {
-        let (i, (c, _)) = consumed(tuple((many_m_n(0, n, parse_h16_colon), parse_h16)))(i)?;
+        let (i, (c, _)) = consumed(tuple((many_m_n_(0, n, parse_h16_colon), parse_h16)))(i)?;
 
         Ok((i, c))
     }
@@ -117,14 +111,14 @@ where
 
 // 6( h16 ":" ) ls32
 fn parse_ipv6_1(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    let (i, (c, _)) = consumed(tuple((count(parse_h16_colon, 6), parse_ls32)))(i)?;
+    let (i, (c, _)) = consumed(tuple((count_(parse_h16_colon, 6), parse_ls32)))(i)?;
 
     Ok((i, c))
 }
 
 // "::" 5( h16 ":" ) ls32
 fn parse_ipv6_2(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    let (i, (c, _)) = consumed(tuple((tag("::"), count(parse_h16_colon, 5), parse_ls32)))(i)?;
+    let (i, (c, _)) = consumed(tuple((tag("::"), count_(parse_h16_colon, 5), parse_ls32)))(i)?;
 
     Ok((i, c))
 }
@@ -134,7 +128,7 @@ fn parse_ipv6_3(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     let (i, (c, _)) = consumed(tuple((
         opt(parse_h16),
         tag("::"),
-        count(parse_h16_colon, 4),
+        count_(parse_h16_colon, 4),
         parse_ls32,
     )))(i)?;
 
@@ -143,12 +137,12 @@ fn parse_ipv6_3(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 
 // [ *1( h16 ":" ) h16 ] "::" 3( h16 ":" ) ls32
 fn parse_ipv6_4(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    parse_ipv6_compressed(1, tuple((count(parse_h16_colon, 3), parse_ls32)))(i)
+    parse_ipv6_compressed(1, tuple((count_(parse_h16_colon, 3), parse_ls32)))(i)
 }
 
 // [ *2( h16 ":" ) h16 ] "::" 2( h16 ":" ) ls32
 fn parse_ipv6_5(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
-    parse_ipv6_compressed(2, tuple((count(parse_h16_colon, 2), parse_ls32)))(i)
+    parse_ipv6_compressed(2, tuple((count_(parse_h16_colon, 2), parse_ls32)))(i)
 }
 
 // [ *3( h16 ":" ) h16 ] "::" h16 ":" ls32
@@ -176,6 +170,7 @@ fn parse_ipv6_9(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_no_alloc::*;
 
     #[test]
     fn test_parse_ipv6() {
@@ -198,7 +193,7 @@ mod tests {
 
         for addr in addrs {
             println!("parsing addr: {}", addr);
-            let result = parse_ipv6(addr.as_bytes());
+            let result = assert_no_alloc(|| parse_ipv6(addr.as_bytes()));
             let (remaining, addr_) = result.unwrap();
             assert_eq!(addr.as_bytes(), addr_);
             assert!(remaining.len() == 0);

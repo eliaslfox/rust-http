@@ -6,4 +6,7 @@ edition = "2018"
 
 [dependencies]
 derive_more = "0.99.11"
-nom = { version = "6.1.2", features = ["std"], default-features = false }
+nom = { version = "6.1.2", features = [], default-features = false }
+
+[dev-dependencies]
+assert_no_alloc = "1.1.0"

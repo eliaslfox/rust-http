@@ -1,7 +1,7 @@
 use nom::{
-    error::ParseError,
+    error::{ErrorKind, ParseError},
     lib::std::str::{from_utf8, FromStr},
-    IResult,
+    Err, IResult, Parser,
 };
 use std::str::Utf8Error;
 
@@ -12,7 +12,7 @@ use std::str::Utf8Error;
  */
 #[derive(Debug, derive_more::From)]
 pub enum HttpParseError<I> {
-    Nom(nom::error::VerboseError<I>),
+    Nom(nom::error::Error<I>),
     Utf8(Utf8Error),
 }
 
@@ -21,22 +21,11 @@ pub type ParseResult<'a, O> = IResult<Input<'a>, O, HttpParseError<Input<'a>>>;
 
 impl<I> nom::error::ParseError<I> for HttpParseError<I> {
     fn from_error_kind(input: I, kind: nom::error::ErrorKind) -> Self {
-        nom::error::VerboseError::from_error_kind(input, kind).into()
+        nom::error::Error::from_error_kind(input, kind).into()
     }
     fn append(input: I, kind: nom::error::ErrorKind, other: Self) -> Self {
         match other {
-            HttpParseError::Nom(nom) => nom::error::VerboseError::append(input, kind, nom).into(),
-            _ => other,
-        }
-    }
-}
-
-impl<I> nom::error::ContextError<I> for HttpParseError<I> {
-    fn add_context(_input: I, _ctx: &'static str, other: Self) -> Self {
-        match other {
-            HttpParseError::Nom(nom) => {
-                nom::error::VerboseError::add_context(_input, _ctx, nom).into()
-            }
+            HttpParseError::Nom(nom) => nom::error::Error::append(input, kind, nom).into(),
             _ => other,
         }
     }
@@ -60,4 +49,120 @@ pub fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>>
             nom::error::ErrorKind::Digit,
         ))
     })
+}
+
+pub fn count_<I, O, E, F>(mut f: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
+where
+    I: Clone + PartialEq,
+    F: Parser<I, O, E>,
+    E: ParseError<I>,
+{
+    move |i: I| {
+        let mut input = i.clone();
+
+        for _ in 0..count {
+            let input_ = input.clone();
+            match f.parse(input_) {
+                Ok((i, _o)) => {
+                    input = i;
+                }
+                Err(Err::Error(e)) => {
+                    return Err(Err::Error(E::append(i, ErrorKind::Count, e)));
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok((input, ()))
+    }
+}
+
+pub fn many_m_n_<I, O, E, F>(
+    min: usize,
+    max: usize,
+    mut parse: F,
+) -> impl FnMut(I) -> IResult<I, (), E>
+where
+    I: Clone + PartialEq,
+    F: Parser<I, O, E>,
+    E: ParseError<I>,
+{
+    move |mut input: I| {
+        for count in 0..max {
+            match parse.parse(input.clone()) {
+                Ok((tail, _value)) => {
+                    // do not allow parsers that do not consume input (causes infinite loops)
+                    if tail == input {
+                        return Err(Err::Error(E::from_error_kind(input, ErrorKind::ManyMN)));
+                    }
+
+                    input = tail;
+                }
+                Err(Err::Error(e)) => {
+                    if count < min {
+                        return Err(Err::Error(E::append(input, ErrorKind::ManyMN, e)));
+                    } else {
+                        return Ok((input, ()));
+                    }
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok((input, ()))
+    }
+}
+
+pub fn many0_<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, (), E>
+where
+    I: Clone + PartialEq,
+    F: Parser<I, O, E>,
+    E: ParseError<I>,
+{
+    move |mut i: I| loop {
+        match f.parse(i.clone()) {
+            Err(Err::Error(_)) => return Ok((i, ())),
+            Err(e) => return Err(e),
+            Ok((i1, _o)) => {
+                if i1 == i {
+                    return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
+                }
+
+                i = i1;
+            }
+        }
+    }
+}
+
+pub fn many1_<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, (), E>
+where
+    I: Clone + PartialEq,
+    F: Parser<I, O, E>,
+    E: ParseError<I>,
+{
+    move |mut i: I| match f.parse(i.clone()) {
+        Err(Err::Error(err)) => Err(Err::Error(E::append(i, ErrorKind::Many1, err))),
+        Err(e) => Err(e),
+        Ok((i1, _o)) => {
+            i = i1;
+
+            loop {
+                match f.parse(i.clone()) {
+                    Err(Err::Error(_)) => return Ok((i, ())),
+                    Err(e) => return Err(e),
+                    Ok((i1, _o)) => {
+                        if i1 == i {
+                            return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many1)));
+                        }
+
+                        i = i1;
+                    }
+                }
+            }
+        }
+    }
 }

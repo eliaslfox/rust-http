@@ -1,3 +1,10 @@
+#[cfg(test)]
+use assert_no_alloc::AllocDisabler;
+
+#[cfg(test)]
+#[global_allocator]
+static A: AllocDisabler = AllocDisabler;
+
 mod ipv4;
 mod ipv6;
 mod parse;

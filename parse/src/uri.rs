@@ -1,16 +1,13 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
-    bytes::complete::{take_while, take_while1},
+    bytes::complete::{tag, take_while, take_while1},
     character::{complete::char, is_alphanumeric, is_digit},
     combinator::{consumed, map, opt},
-    error::context,
-    multi::{many0, many1},
     sequence::{preceded, terminated, tuple},
     AsChar,
 };
 
-use crate::parse::{u8_to_u32, u8_to_utf8, Input, ParseResult};
+use crate::parse::{many0_, many1_, u8_to_u32, u8_to_utf8, Input, ParseResult};
 use crate::{ipv4::parse_ipv4, ipv6::parse_ipv6};
 
 // Characters allowed in an URI and not given a reserved meaning
@@ -58,10 +55,8 @@ impl<'a> Scheme<'a> {
 
     // Parse an URI scheme as defined by rfc3986 3.1.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
-        context("uri scheme", |i| {
-            let (i, scheme) = terminated(take_while(Self::valid_character), tag(":"))(i)?;
-            Ok((i, Scheme(u8_to_utf8(scheme)?)))
-        })(i)
+        let (i, scheme) = terminated(take_while(Self::valid_character), tag(":"))(i)?;
+        Ok((i, Scheme(u8_to_utf8(scheme)?)))
     }
 }
 
@@ -78,11 +73,9 @@ impl<'a> UserInfo<'a> {
 
     // Parse a URI user_info subcomponent as defined by rfc3986 3.2.1.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
-        context("uri userinfo", |i| {
-            let (i, user_info) = terminated(take_while(UserInfo::valid_character), tag("@"))(i)?;
-            let user_info = u8_to_utf8(user_info)?;
-            Ok((i, UserInfo(user_info)))
-        })(i)
+        let (i, user_info) = terminated(take_while(UserInfo::valid_character), tag("@"))(i)?;
+        let user_info = u8_to_utf8(user_info)?;
+        Ok((i, UserInfo(user_info)))
     }
 }
 
@@ -96,20 +89,18 @@ impl<'a> Host<'a> {
 
     // Valid host subcomponents of an URI are defined as rfc3986 3.2.2.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
-        context("uri host", |i| {
-            let (i, host) = alt((
-                // check if the host is a valid ipv4 address first as ipv4 addresses are also valid
-                // reg-names
-                parse_ipv4,
-                take_while1(Self::valid_reg_name_character),
-                map(
-                    consumed(tuple((char('['), parse_ipv6, char(']')))),
-                    |(c, _)| c,
-                ),
-            ))(i)?;
-            let host = u8_to_utf8(host)?;
-            Ok((i, Host(host)))
-        })(i)
+        let (i, host) = alt((
+            // check if the host is a valid ipv4 address first as ipv4 addresses are also valid
+            // reg-names
+            parse_ipv4,
+            take_while1(Self::valid_reg_name_character),
+            map(
+                consumed(tuple((char('['), parse_ipv6, char(']')))),
+                |(c, _)| c,
+            ),
+        ))(i)?;
+        let host = u8_to_utf8(host)?;
+        Ok((i, Host(host)))
     }
 }
 
@@ -119,11 +110,9 @@ struct Port(u32);
 impl Port {
     // Valid ports for an URI as defined in rfc3986 3.2.3.
     fn parse(i: Input<'_>) -> ParseResult<'_, Self> {
-        context("url port", |i| {
-            let (i, port) = preceded(tag(":"), take_while(is_digit))(i)?;
-            let port = u8_to_u32(port)?;
-            Ok((i, Port(port)))
-        })(i)
+        let (i, port) = preceded(tag(":"), take_while(is_digit))(i)?;
+        let port = u8_to_u32(port)?;
+        Ok((i, Port(port)))
     }
 }
 
@@ -146,21 +135,19 @@ impl<'a> Authority<'a> {
 
     // Parse an URI authority as defined by rfc3986 3.2
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
-        context("uri authority", |i| {
-            let (i, _) = tag("//")(i)?;
-            let (i, user_info) = opt(UserInfo::parse)(i)?;
-            let (i, host) = opt(Host::parse)(i)?;
-            let (i, port) = opt(Port::parse)(i)?;
+        let (i, _) = tag("//")(i)?;
+        let (i, user_info) = opt(UserInfo::parse)(i)?;
+        let (i, host) = opt(Host::parse)(i)?;
+        let (i, port) = opt(Port::parse)(i)?;
 
-            Ok((
-                i,
-                Authority {
-                    user_info,
-                    host,
-                    port,
-                },
-            ))
-        })(i)
+        Ok((
+            i,
+            Authority {
+                user_info,
+                host,
+                port,
+            },
+        ))
     }
 }
 
@@ -183,20 +170,18 @@ impl<'a> Path<'a> {
     // This implentation also collapses duplicate slashes between segments and consumes slashes at
     // the end of a path. This is not required by the URI spec but makes the parser more lenient.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
-        context("uri path", |i| {
-            let (i, (c, _)) = consumed(tuple((
-                many0(preceded(
-                    many1(tag("/")),
-                    take_while1(Self::valid_path_segment_char),
-                )),
-                // Remove trailing slashes
-                many0(tag("/")),
-            )))(i)?;
+        let (i, (c, _)) = consumed(tuple((
+            many0_(preceded(
+                many1_(tag("/")),
+                take_while1(Self::valid_path_segment_char),
+            )),
+            // Remove trailing slashes
+            many0_(tag("/")),
+        )))(i)?;
 
-            let path = u8_to_utf8(c)?;
+        let path = u8_to_utf8(c)?;
 
-            Ok((i, Path(path)))
-        })(i)
+        Ok((i, Path(path)))
     }
 
     fn iterate(&self) -> impl Iterator<Item = &'a str> {
@@ -214,11 +199,9 @@ impl<'a> Query<'a> {
 
     // Parse an URI authority as defined by rfc3986 3.4.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
-        context("uri query", |i| {
-            let (i, query) = preceded(tag("?"), take_while(Self::valid_query_char))(i)?;
-            let query = u8_to_utf8(query)?;
-            Ok((i, Query(query)))
-        })(i)
+        let (i, query) = preceded(tag("?"), take_while(Self::valid_query_char))(i)?;
+        let query = u8_to_utf8(query)?;
+        Ok((i, Query(query)))
     }
 }
 
@@ -232,11 +215,9 @@ impl<'a> Fragment<'a> {
 
     // Parse an URI authority as defined by rfc3986 3.5.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
-        context("uri query", |i| {
-            let (i, query) = preceded(tag("#"), take_while(Self::valid_query_char))(i)?;
-            let query = u8_to_utf8(query)?;
-            Ok((i, Fragment(query)))
-        })(i)
+        let (i, query) = preceded(tag("#"), take_while(Self::valid_query_char))(i)?;
+        let query = u8_to_utf8(query)?;
+        Ok((i, Fragment(query)))
     }
 }
 
@@ -401,40 +382,39 @@ impl<'a> Uri<'a> {
     ///
     /// Parsing grammar and specification is taken from [RFC3986](https://tools.ietf.org/html/rfc3986).
     pub fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
-        context("uri", |i| {
-            let (i, scheme) = Scheme::parse(i)?;
-            let (i, authority) = opt(Authority::parse)(i)?;
+        let (i, scheme) = Scheme::parse(i)?;
+        let (i, authority) = opt(Authority::parse)(i)?;
 
-            // If a URI does not have an authority then the path is a single segment
-            let (i, path) = match authority {
-                Some(_) => Path::parse(i)?,
-                None => {
-                    let (i, path) = take_while(Path::valid_path_segment_char)(i)?;
-                    let path = u8_to_utf8(path)?;
-                    (i, Path(path))
-                }
-            };
+        // If a URI does not have an authority then the path is a single segment
+        let (i, path) = match authority {
+            Some(_) => Path::parse(i)?,
+            None => {
+                let (i, path) = take_while(Path::valid_path_segment_char)(i)?;
+                let path = u8_to_utf8(path)?;
+                (i, Path(path))
+            }
+        };
 
-            let (i, query) = opt(Query::parse)(i)?;
-            let (i, fragment) = opt(Fragment::parse)(i)?;
+        let (i, query) = opt(Query::parse)(i)?;
+        let (i, fragment) = opt(Fragment::parse)(i)?;
 
-            Ok((
-                i,
-                Uri {
-                    scheme,
-                    authority,
-                    path,
-                    query,
-                    fragment,
-                },
-            ))
-        })(i)
+        Ok((
+            i,
+            Uri {
+                scheme,
+                authority,
+                path,
+                query,
+                fragment,
+            },
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_no_alloc::*;
 
     const URL1: &'static [u8] = b"ftp://ftp.is.co.za/rfc/rfc1808.txt";
     const URL2: &'static [u8] = b"http://www.ietf.org/rfc/rfc2396.txt";
@@ -588,7 +568,7 @@ mod tests {
 
     #[test]
     fn parse_uri() {
-        let result = Uri::parse(b"http://example.com/aaa/bbb");
+        let result = assert_no_alloc(|| Uri::parse(b"http://example.com/aaa/bbb"));
         let (_, uri) = result.unwrap();
 
         assert_eq!(
@@ -602,7 +582,7 @@ mod tests {
             )
         );
 
-        let result = Uri::parse(b"https://127.0.0.1:8080?test=7");
+        let result = assert_no_alloc(|| Uri::parse(b"https://127.0.0.1:8080?test=7"));
         let (_, uri) = result.unwrap();
 
         assert_eq!(
@@ -616,7 +596,7 @@ mod tests {
             )
         );
 
-        let result = Uri::parse(b"ftp:///etc/passwd");
+        let result = assert_no_alloc(|| Uri::parse(b"ftp:///etc/passwd"));
         let (_, uri) = result.unwrap();
 
         assert_eq!(
@@ -633,7 +613,7 @@ mod tests {
 
     #[test]
     fn parse_uri_no_authority() {
-        let result = Uri::parse(b"news:comp.infosystems.www.servers.unix");
+        let result = assert_no_alloc(|| Uri::parse(b"news:comp.infosystems.www.servers.unix"));
         let (_, uri) = result.unwrap();
 
         assert_eq!(
@@ -647,7 +627,7 @@ mod tests {
             )
         );
 
-        let result = Uri::parse(b"tel:+1-816-555-1212");
+        let result = assert_no_alloc(|| Uri::parse(b"tel:+1-816-555-1212"));
         let (_, uri) = result.unwrap();
 
         assert_eq!(uri, Uri::new("tel", None, "+1-816-555-1212", None, None));
@@ -657,7 +637,7 @@ mod tests {
     #[should_panic]
     fn parse_uri_no_scheme() {
         let uri = b"http//example.com";
-        let result = Uri::parse(uri);
+        let result = assert_no_alloc(|| Uri::parse(uri));
         let (_, _uri) = result.unwrap();
     }
 
