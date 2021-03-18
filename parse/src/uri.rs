@@ -165,7 +165,7 @@ impl<'a> Authority<'a> {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-struct Path<'a>(Vec<&'a str>);
+struct Path<'a>(&'a str);
 
 impl<'a> Path<'a> {
     fn valid_path_segment_char(i: u8) -> bool {
@@ -184,25 +184,23 @@ impl<'a> Path<'a> {
     // the end of a path. This is not required by the URI spec but makes the parser more lenient.
     fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         context("uri path", |i| {
-            let (i, path) = many0(preceded(
-                many1(tag("/")),
-                take_while1(Self::valid_path_segment_char),
-            ))(i)?;
+            let (i, (c, _)) = consumed(tuple((
+                many0(preceded(
+                    many1(tag("/")),
+                    take_while1(Self::valid_path_segment_char),
+                )),
+                // Remove trailing slashes
+                many0(tag("/")),
+            )))(i)?;
 
-            let mut path_utf8 = Vec::with_capacity(path.len());
-            for path_segment in path {
-                // Skip path segments in the form of /./
-                if path_segment == b"." {
-                    continue;
-                }
-                path_utf8.push(u8_to_utf8(path_segment)?);
-            }
+            let path = u8_to_utf8(c)?;
 
-            // Remove trailing slashes
-            let (i, _) = many0(tag("/"))(i)?;
-
-            Ok((i, Path(path_utf8)))
+            Ok((i, Path(path)))
         })(i)
+    }
+
+    fn iterate(&self) -> impl Iterator<Item = &'a str> {
+        self.0.split('/').filter(|x| *x != "" && *x != ".")
     }
 }
 
@@ -257,7 +255,7 @@ impl<'a> Uri<'a> {
     fn new(
         scheme: &'a str,
         authority: Option<Authority<'a>>,
-        path: Vec<&'a str>,
+        path: &'a str,
         query: Option<&'a str>,
         fragment: Option<&'a str>,
     ) -> Self {
@@ -345,16 +343,16 @@ impl<'a> Uri<'a> {
     /// # use parse::{Uri, HttpParseError};
     ///
     /// let (_, uri) = Uri::parse(b"http://example.com/aaa/bbb")?;
-    /// assert_eq!(uri.path(), vec!["aaa", "bbb"]);
+    /// assert_eq!(uri.path().collect::<Vec<&str>>(), vec!["aaa", "bbb"]);
     ///
     /// let (_, uri) = Uri::parse(b"tel:+1-816-555-1212")?;
-    /// assert_eq!(uri.path(), vec!["+1-816-555-1212"]);
+    /// assert_eq!(uri.path().collect::<Vec<&str>>(), vec!["+1-816-555-1212"]);
     ///
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
-    pub fn path(&self) -> &'_ [&'a str] {
-        &self.path.0[..]
+    pub fn path(&self) -> impl Iterator<Item = &'a str> {
+        self.path.iterate()
     }
 
     /// Get the query of an URI.
@@ -413,7 +411,7 @@ impl<'a> Uri<'a> {
                 None => {
                     let (i, path) = take_while(Path::valid_path_segment_char)(i)?;
                     let path = u8_to_utf8(path)?;
-                    (i, Path(vec![path]))
+                    (i, Path(path))
                 }
             };
 
@@ -552,22 +550,24 @@ mod tests {
         let result = Path::parse(b"/aaa/bbb");
         let (_, path) = result.unwrap();
 
-        assert_eq!(path, Path(vec!["aaa", "bbb"]));
+        assert_eq!(path.iterate().collect::<Vec<&str>>(), vec!["aaa", "bbb"]);
 
         let result = Path::parse(b"/aaa");
         let (_, path) = result.unwrap();
 
-        assert_eq!(path, Path(vec!["aaa"]));
+        assert_eq!(path.iterate().collect::<Vec<&str>>(), vec!["aaa"]);
 
         let result = Path::parse(b"/");
         let (_, path) = result.unwrap();
 
-        assert_eq!(path, Path(vec![]));
+        let empty: Vec<&str> = vec![];
+
+        assert_eq!(path.iterate().collect::<Vec<&str>>(), empty);
 
         let result = Path::parse(b"");
         let (_, path) = result.unwrap();
 
-        assert_eq!(path, Path(vec![]));
+        assert_eq!(path.iterate().collect::<Vec<&str>>(), empty);
     }
 
     #[test]
@@ -596,7 +596,7 @@ mod tests {
             Uri::new(
                 "http",
                 Some(Authority::new(None, Some("example.com"), None)),
-                vec!["aaa", "bbb"],
+                "/aaa/bbb",
                 None,
                 None
             )
@@ -610,7 +610,7 @@ mod tests {
             Uri::new(
                 "https",
                 Some(Authority::new(None, Some("127.0.0.1"), Some(8080))),
-                vec![],
+                "",
                 Some("test=7"),
                 None
             )
@@ -624,7 +624,7 @@ mod tests {
             Uri::new(
                 "ftp",
                 Some(Authority::new(None, None, None)),
-                vec!["etc", "passwd"],
+                "/etc/passwd",
                 None,
                 None
             )
@@ -641,7 +641,7 @@ mod tests {
             Uri::new(
                 "news",
                 None,
-                vec!["comp.infosystems.www.servers.unix"],
+                "comp.infosystems.www.servers.unix",
                 None,
                 None
             )
@@ -650,10 +650,7 @@ mod tests {
         let result = Uri::parse(b"tel:+1-816-555-1212");
         let (_, uri) = result.unwrap();
 
-        assert_eq!(
-            uri,
-            Uri::new("tel", None, vec!["+1-816-555-1212"], None, None)
-        );
+        assert_eq!(uri, Uri::new("tel", None, "+1-816-555-1212", None, None));
     }
 
     #[test]
@@ -676,9 +673,9 @@ mod tests {
         let (_, uri3) = Uri::parse(uri3).unwrap();
         let (_, uri4) = Uri::parse(uri4).unwrap();
 
-        assert_eq!(uri1.path(), vec!["a", "b"]);
-        assert_eq!(uri2.path(), vec!["a", "b"]);
-        assert_eq!(uri3.path(), vec!["a", "b"]);
-        assert_eq!(uri4.path(), vec!["a", "b"]);
+        assert_eq!(uri1.path().collect::<Vec<&str>>(), vec!["a", "b"]);
+        assert_eq!(uri2.path().collect::<Vec<&str>>(), vec!["a", "b"]);
+        assert_eq!(uri3.path().collect::<Vec<&str>>(), vec!["a", "b"]);
+        assert_eq!(uri4.path().collect::<Vec<&str>>(), vec!["a", "b"]);
     }
 }
