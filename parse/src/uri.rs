@@ -185,7 +185,7 @@ impl<'a> Path<'a> {
     }
 
     fn iterate(&self) -> impl Iterator<Item = &'a str> {
-        self.0.split('/').filter(|x| *x != "" && *x != ".")
+        self.0.split('/').filter(|x| !x.is_empty() && *x != ".")
     }
 }
 

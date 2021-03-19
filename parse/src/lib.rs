@@ -1,7 +1,7 @@
-#[cfg(test)]
+#[cfg(all(test, debug_assertions))]
 use assert_no_alloc::AllocDisabler;
 
-#[cfg(test)]
+#[cfg(all(test, debug_assertions))]
 #[global_allocator]
 static A: AllocDisabler = AllocDisabler;
 
