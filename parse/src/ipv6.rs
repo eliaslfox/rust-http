@@ -70,42 +70,24 @@ fn parse_ipv6_pre_block(n: usize) -> impl Fn(Input<'_>) -> ParseResult<'_, &'_ [
 }
 
 // Parse a ipv6 address in the form of [ *N( h1 ":" ) h16 ] "::" F.
-//
-// This function special cases addresses in the form of "FF::2005:F005" because the main parser
-// will grab the first colon in the double colon structure and cause the parser to fail.
-//
-// This function avoids using use nom::combinator::alt to not double borrow f.
 fn parse_ipv6_compressed<'a, F, O>(
     n: usize,
-    mut f: F,
+    f: F,
 ) -> impl FnOnce(Input<'a>) -> ParseResult<'a, &'a [u8]>
 where
     F: FnMut(Input<'a>) -> ParseResult<'a, O> + 'a,
 {
     move |i| {
-        let p1_f = |i| {
-            let (i, _) = parse_h16(i)?;
-            let (i, _) = tag("::")(i)?;
-            let (i, _) = f(i)?;
-            Ok((i, ()))
-        };
-        let mut p1 = map(consumed(p1_f), |(c, _)| c);
+        let (i, (c, _)) = consumed(tuple((
+            alt((
+                map(parse_h16, |_| ()),
+                map(opt(parse_ipv6_pre_block(n)), |_| ()),
+            )),
+            tag("::"),
+            f,
+        )))(i)?;
 
-        let p1_res = p1(i);
-        drop(p1);
-
-        if p1_res.is_err() {
-            let p2_f = |i| {
-                let (i, _) = opt(parse_ipv6_pre_block(n))(i)?;
-                let (i, _) = tag("::")(i)?;
-                let (i, _) = f(i)?;
-                Ok((i, ()))
-            };
-            let mut p2 = map(consumed(p2_f), |(c, _)| c);
-            p2(i)
-        } else {
-            p1_res
-        }
+        Ok((i, c))
     }
 }
 
