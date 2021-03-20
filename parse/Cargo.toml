@@ -2,6 +2,8 @@
 name = "parse"
 version = "0.1.0"
 authors = ["Elias Lawson-Fox <me@eliaslfox.com>"]
+repository = "https://github.com/eliaslfox/rust-http"
+license = "MIT OR Apache-2.0"
 edition = "2018"
 
 [dependencies]

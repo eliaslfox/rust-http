@@ -1,3 +1,14 @@
+#![warn(
+    missing_docs,
+    missing_debug_implementations,
+    clippy::pedantic,
+    clippy::nursery,
+    rust_2018_idioms
+)]
+#![cfg_attr(docsrs, deny(broken_intra_doc_links))]
+
+//! Parse http requests.
+
 #[cfg(all(test, debug_assertions))]
 use assert_no_alloc::AllocDisabler;
 
@@ -10,7 +21,5 @@ mod ipv6;
 mod parse;
 mod uri;
 
-pub use crate::parse::HttpParseError;
-pub use ipv4::parse_ipv4;
-pub use ipv6::parse_ipv6;
+pub use crate::parse::{HttpParseError, Input, ParseResult};
 pub use uri::Uri;

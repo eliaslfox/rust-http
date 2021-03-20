@@ -7,8 +7,10 @@ use nom::{
     AsChar,
 };
 
-use crate::parse::{many0_, many1_, u8_to_u32, u8_to_utf8, Input, ParseResult};
-use crate::{ipv4::parse_ipv4, ipv6::parse_ipv6};
+use crate::{
+    ipv4, ipv6,
+    parse::{many0_, many1_, u8_to_u32, u8_to_utf8, Input, ParseResult},
+};
 
 // Characters allowed in an URI and not given a reserved meaning
 // as defined by rfc3986 2.3.
@@ -92,10 +94,10 @@ impl<'a> Host<'a> {
         let (i, host) = alt((
             // check if the host is a valid ipv4 address first as ipv4 addresses are also valid
             // reg-names
-            parse_ipv4,
+            ipv4::parse,
             take_while1(Self::valid_reg_name_character),
             map(
-                consumed(tuple((char('['), parse_ipv6, char(']')))),
+                consumed(tuple((char('['), ipv6::parse, char(']')))),
                 |(c, _)| c,
             ),
         ))(i)?;
@@ -112,7 +114,7 @@ impl Port {
     fn parse(i: Input<'_>) -> ParseResult<'_, Self> {
         let (i, port) = preceded(tag(":"), take_while(is_digit))(i)?;
         let port = u8_to_u32(port)?;
-        Ok((i, Port(port)))
+        Ok((i, Self(port)))
     }
 }
 
@@ -260,7 +262,8 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
-    pub fn scheme(&self) -> &'a str {
+    #[must_use]
+    pub const fn scheme(&self) -> &'a str {
         self.scheme.0
     }
 
@@ -275,6 +278,7 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
+    #[must_use]
     pub fn user_info(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.user_info).map(|x| x.0)
     }
@@ -293,6 +297,7 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
+    #[must_use]
     pub fn host(&self) -> Option<&'a str> {
         self.authority.and_then(|x| x.host).map(|x| x.0)
     }
@@ -312,6 +317,7 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
+    #[must_use]
     pub fn port(&self) -> Option<u32> {
         self.authority.and_then(|x| x.port).map(|x| x.0)
     }
@@ -348,6 +354,7 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
+    #[must_use]
     pub fn query(&self) -> Option<&'a str> {
         self.query.map(|x| x.0)
     }
@@ -363,6 +370,7 @@ impl<'a> Uri<'a> {
     /// # Ok::<(), nom::Err<HttpParseError<&'_ [u8]>>>(())
     /// ```
     #[inline]
+    #[must_use]
     pub fn fragment(&self) -> Option<&'a str> {
         self.fragment.map(|x| x.0)
     }
@@ -381,18 +389,23 @@ impl<'a> Uri<'a> {
     /// - `http://example.com/a/b//`
     ///
     /// Parsing grammar and specification is taken from [RFC3986](https://tools.ietf.org/html/rfc3986).
+    ///
+    /// # Errors
+    ///
+    /// Will return `Err` if the URI fails to parse.
     pub fn parse(i: Input<'a>) -> ParseResult<'_, Self> {
         let (i, scheme) = Scheme::parse(i)?;
         let (i, authority) = opt(Authority::parse)(i)?;
 
-        // If a URI does not have an authority then the path is a single segment
-        let (i, path) = match authority {
-            Some(_) => Path::parse(i)?,
-            None => {
-                let (i, path) = take_while(Path::valid_path_segment_char)(i)?;
-                let path = u8_to_utf8(path)?;
-                (i, Path(path))
-            }
+        // If a URI has an authority then parse a path
+        let (i, path) = if authority.is_some() {
+            Path::parse(i)?
+        }
+        // Otherwise parse the path as a single element not preceeded by a `/`
+        else {
+            let (i, path) = take_while(Path::valid_path_segment_char)(i)?;
+            let path = u8_to_utf8(path)?;
+            (i, Path(path))
         };
 
         let (i, query) = opt(Query::parse)(i)?;

@@ -5,18 +5,21 @@ use nom::{
 };
 use std::str::Utf8Error;
 
-/*
- * ParseError allows returning multiples types of error from a parser
- * Returning an error type other than nom::error::VerboseError will
- * cause location information to be lost.
- */
+/// Parse error types.
 #[derive(Debug, derive_more::From)]
 pub enum HttpParseError<I> {
+    /// An individual nom parser failed.
     Nom(nom::error::Error<I>),
+
+    /// A conversion from &[u8] to &str failed.
     Utf8(Utf8Error),
 }
 
+/// Input type for all parsers.
 pub type Input<'a> = &'a [u8];
+
+/// Output type from all parsers.
+#[allow(clippy::module_name_repetitions)]
 pub type ParseResult<'a, O> = IResult<Input<'a>, O, HttpParseError<Input<'a>>>;
 
 impl<I> nom::error::ParseError<I> for HttpParseError<I> {
@@ -26,13 +29,10 @@ impl<I> nom::error::ParseError<I> for HttpParseError<I> {
     fn append(input: I, kind: nom::error::ErrorKind, other: Self) -> Self {
         match other {
             HttpParseError::Nom(nom) => nom::error::Error::append(input, kind, nom).into(),
-            _ => other,
+            HttpParseError::Utf8(_) => other,
         }
     }
 }
-
-// TODO: both u8_to_utf8 and u8_to_u32 aren't implemented as proper parser combinators. As a result
-// they likely lose location information on a parser error.
 
 /// Converts a &[u8] to a &str by attempting to decode as utf8.
 pub fn u8_to_utf8(i: &'_ [u8]) -> Result<&'_ str, nom::Err<HttpParseError<&'_ [u8]>>> {
@@ -103,9 +103,8 @@ where
                 Err(Err::Error(e)) => {
                     if count < min {
                         return Err(Err::Error(E::append(input, ErrorKind::ManyMN, e)));
-                    } else {
-                        return Ok((input, ()));
                     }
+                    return Ok((input, ()));
                 }
                 Err(e) => {
                     return Err(e);

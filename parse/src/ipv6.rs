@@ -6,8 +6,10 @@ use nom::{
     sequence::tuple,
 };
 
-use crate::ipv4::parse_ipv4;
-use crate::parse::{count_, many_m_n_, Input, ParseResult};
+use crate::{
+    ipv4,
+    parse::{count_, many_m_n_, Input, ParseResult},
+};
 
 /// Parse an ipv6 address using the syntax defined in
 /// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2). This function does not normalize
@@ -23,7 +25,7 @@ use crate::parse::{count_, many_m_n_, Input, ParseResult};
 //                  / [ *4( h16 ":" ) h16 ] "::"              ls32
 //                  / [ *5( h16 ":" ) h16 ] "::"              h16
 //                  / [ *6( h16 ":" ) h16 ] "::"
-pub fn parse_ipv6(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
+pub fn parse(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     alt((
         parse_ipv6_1,
         parse_ipv6_2,
@@ -49,7 +51,7 @@ fn parse_ls32(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
         consumed(tuple((parse_h16, char(':'), parse_h16))),
         |(c, _)| c,
     );
-    alt((parse_double_h16, parse_ipv4))(i)
+    alt((parse_double_h16, ipv4::parse))(i)
 }
 
 // h16_colon = h16 ":"
@@ -152,7 +154,7 @@ fn parse_ipv6_9(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_no_alloc::*;
+    use assert_no_alloc::assert_no_alloc;
 
     #[test]
     fn test_parse_ipv6() {
@@ -175,10 +177,10 @@ mod tests {
 
         for addr in addrs {
             println!("parsing addr: {}", addr);
-            let result = assert_no_alloc(|| parse_ipv6(addr.as_bytes()));
+            let result = assert_no_alloc(|| parse(addr.as_bytes()));
             let (remaining, addr_) = result.unwrap();
             assert_eq!(addr.as_bytes(), addr_);
-            assert!(remaining.len() == 0);
+            assert!(remaining.is_empty());
         }
     }
 }
