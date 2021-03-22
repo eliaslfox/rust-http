@@ -62,13 +62,13 @@ mod tests {
 
     #[test]
     fn test_parse_ipv4_quad_invalid() {
-        let result = assert_no_alloc(|| parse_ipv4_quad(b"10.0.0.2567"));
+        let result = assert_no_alloc(|| parse(b"10.0.0.2567"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_ipv4_quad_short() {
-        let result = assert_no_alloc(|| parse_ipv4_quad(b"10.1.1"));
+        let result = assert_no_alloc(|| parse(b"10.1.1"));
         assert!(result.is_err());
     }
 }
