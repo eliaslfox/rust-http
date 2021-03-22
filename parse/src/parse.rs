@@ -1,5 +1,5 @@
 use nom::{
-    error::{ErrorKind, ParseError},
+    error::{Error, ErrorKind, ParseError},
     lib::std::str::{from_utf8, FromStr},
     Err, IResult, Parser,
 };
@@ -23,12 +23,12 @@ pub type Input<'a> = &'a [u8];
 pub type ParseResult<'a, O> = IResult<Input<'a>, O, HttpParseError<Input<'a>>>;
 
 impl<I> nom::error::ParseError<I> for HttpParseError<I> {
-    fn from_error_kind(input: I, kind: nom::error::ErrorKind) -> Self {
-        nom::error::Error::from_error_kind(input, kind).into()
+    fn from_error_kind(input: I, kind: ErrorKind) -> Self {
+        Error::from_error_kind(input, kind).into()
     }
-    fn append(input: I, kind: nom::error::ErrorKind, other: Self) -> Self {
+    fn append(input: I, kind: ErrorKind, other: Self) -> Self {
         match other {
-            HttpParseError::Nom(nom) => nom::error::Error::append(input, kind, nom).into(),
+            HttpParseError::Nom(nom) => Error::append(input, kind, nom).into(),
             HttpParseError::Utf8(_) => other,
         }
     }
@@ -43,12 +43,8 @@ pub fn u8_to_utf8(i: &'_ [u8]) -> Result<&'_ str, nom::Err<HttpParseError<&'_ [u
 
 /// Convert a &[u8] to a unicode &str and then parse that string into a u32.
 pub fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>> {
-    u32::from_str(u8_to_utf8(i)?).map_err(|_| {
-        nom::Err::Error(HttpParseError::from_error_kind(
-            i,
-            nom::error::ErrorKind::Digit,
-        ))
-    })
+    u32::from_str(u8_to_utf8(i)?)
+        .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
 }
 
 pub fn count_<I, O, E, F>(mut f: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
