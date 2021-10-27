@@ -10,6 +10,9 @@
 
 //! Parse http requests.
 
+#[cfg(test)]
+use url as _;
+
 #[cfg(all(test, debug_assertions))]
 use assert_no_alloc::AllocDisabler;
 

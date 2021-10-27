@@ -5,9 +5,9 @@ members = [
 ]
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 
 [profile.bench]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
