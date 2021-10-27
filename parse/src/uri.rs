@@ -84,10 +84,6 @@ impl<'a> PartialEq for Scheme<'a> {
     fn eq<'b>(&self, other: &Scheme<'b>) -> bool {
         self.get_str() == other.get_str()
     }
-
-    fn ne<'b>(&self, other: &Scheme<'b>) -> bool {
-        self.get_str() != other.get_str()
-    }
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -173,10 +169,6 @@ impl<'a> Host<'a> {
 impl<'a> PartialEq for Host<'a> {
     fn eq<'b>(&self, other: &Host<'b>) -> bool {
         self.get_str() == other.get_str()
-    }
-
-    fn ne<'b>(&self, other: &Host<'b>) -> bool {
-        self.get_str() != other.get_str()
     }
 }
 
@@ -353,7 +345,7 @@ impl<'a> Uri<'a> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn user_info(&self) -> Option<&'a str> {
+    pub const fn user_info(&self) -> Option<&'a str> {
         match self.authority {
             Some(Authority {
                 user_info: Some(user_info),
@@ -408,7 +400,7 @@ impl<'a> Uri<'a> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn port(&self) -> Option<u32> {
+    pub const fn port(&self) -> Option<u32> {
         match self.authority {
             Some(Authority {
                 port: Some(port), ..
@@ -522,7 +514,7 @@ impl<'a> Uri<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use assert_no_alloc::*;
+    use assert_no_alloc::assert_no_alloc;
 
     #[test]
     fn parse_uri() {
