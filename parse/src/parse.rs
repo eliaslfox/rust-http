@@ -36,20 +36,20 @@ impl<I> nom::error::ParseError<I> for HttpParseError<I> {
 }
 
 /// Converts a &[u8] to a &str by attempting to decode as utf8.
-pub fn u8_to_utf8(i: &'_ [u8]) -> Result<&'_ str, nom::Err<HttpParseError<&'_ [u8]>>> {
+pub(crate) fn u8_to_utf8(i: &'_ [u8]) -> Result<&'_ str, nom::Err<HttpParseError<&'_ [u8]>>> {
     from_utf8(i)
         .map_err(HttpParseError::Utf8)
         .map_err(nom::Err::Error)
 }
 
 /// Convert a &[u8] to a unicode &str and then parse that string into a u32.
-pub fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>> {
+pub(crate) fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>> {
     u32::from_str(u8_to_utf8(i)?)
         .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
 }
 
 /// Version of [`nom::multi::count`] that doesn't allocate
-pub fn count_<I, O, E, F>(parser: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
+pub(crate) fn count_<I, O, E, F>(parser: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
 where
     I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
@@ -59,7 +59,11 @@ where
 }
 
 /// Version of [`nom::multi::many_m_n`] that doesn't allocate
-pub fn many_m_n_<I, O, E, F>(min: usize, max: usize, parse: F) -> impl FnMut(I) -> IResult<I, (), E>
+pub(crate) fn many_m_n_<I, O, E, F>(
+    min: usize,
+    max: usize,
+    parse: F,
+) -> impl FnMut(I) -> IResult<I, (), E>
 where
     I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
@@ -69,7 +73,7 @@ where
 }
 
 /// Version of [`nom::multi::many0`] that doesn't allocate
-pub fn many0_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
+pub(crate) fn many0_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
 where
     I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
@@ -79,7 +83,7 @@ where
 }
 
 /// Version of [`nom::multi::many1`] that doesn't allocate
-pub fn many1_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
+pub(crate) fn many1_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
 where
     I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,

@@ -25,7 +25,7 @@ use crate::{
 //                  / [ *4( h16 ":" ) h16 ] "::"              ls32
 //                  / [ *5( h16 ":" ) h16 ] "::"              h16
 //                  / [ *6( h16 ":" ) h16 ] "::"
-pub fn parse(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
+pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     alt((
         parse_ipv6_1,
         parse_ipv6_2,

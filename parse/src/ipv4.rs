@@ -11,7 +11,7 @@ use crate::parse::{Input, ParseResult};
 
 /// Parse an ipv4 quad using the syntax defined by
 /// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2).
-pub fn parse(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
+pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, &'_ [u8]> {
     parse_ipv4_quad(i)
 }
 

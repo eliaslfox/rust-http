@@ -1,9 +1,10 @@
 #![warn(
-    missing_docs,
+    missing_copy_implementations,
     missing_debug_implementations,
-    clippy::pedantic,
-    clippy::nursery,
-    rust_2018_idioms
+    missing_docs,
+    unreachable_pub,
+    unused_crate_dependencies,
+    clippy::pedantic
 )]
 #![cfg_attr(docsrs, deny(broken_intra_doc_links))]
 
