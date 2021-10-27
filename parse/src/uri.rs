@@ -43,8 +43,11 @@ fn uri_encoded_character(i: u8) -> bool {
     i.as_char() == '%'
 }
 
-#[derive(PartialEq, Eq, Debug)]
-struct Scheme<'a>(&'a str);
+#[derive(Eq, Debug, Clone)]
+enum Scheme<'a> {
+    Owned(String),
+    Borrowed(&'a str),
+}
 
 impl<'a> Scheme<'a> {
     fn valid_character(i: u8) -> bool {
@@ -58,7 +61,32 @@ impl<'a> Scheme<'a> {
     // Parse an URI scheme as defined by rfc3986 3.1.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
         let (i, scheme) = terminated(take_while(Self::valid_character), tag(":"))(i)?;
-        Ok((i, Scheme(u8_to_utf8(scheme)?)))
+
+        let scheme = u8_to_utf8(scheme)?;
+
+        if scheme.chars().any(|c| matches!(c, 'A'..='Z')) {
+            let scheme = scheme.to_ascii_lowercase();
+            return Ok((i, Scheme::Owned(scheme)));
+        }
+
+        Ok((i, Scheme::Borrowed(scheme)))
+    }
+
+    fn get_str(&self) -> &'_ str {
+        match self {
+            Scheme::Owned(ref str) => str,
+            Scheme::Borrowed(str) => str,
+        }
+    }
+}
+
+impl<'a> PartialEq for Scheme<'a> {
+    fn eq<'b>(&self, other: &Scheme<'b>) -> bool {
+        self.get_str() == other.get_str()
+    }
+
+    fn ne<'b>(&self, other: &Scheme<'b>) -> bool {
+        self.get_str() != other.get_str()
     }
 }
 
@@ -81,28 +109,74 @@ impl<'a> UserInfo<'a> {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-struct Host<'a>(&'a str);
+#[derive(Eq, Debug, Clone)]
+enum Host<'a> {
+    Owned(String),
+    Borrowed(&'a str),
+}
 
 impl<'a> Host<'a> {
     fn valid_reg_name_character(i: u8) -> bool {
         uri_unreserved_character(i) || uri_encoded_character(i) || uri_sub_delimeter(i)
     }
 
+    fn parse_reg_name(i: Input<'a>) -> ParseResult<'a, Self> {
+        let (i, host) = take_while1(Self::valid_reg_name_character)(i)?;
+
+        let host = u8_to_utf8(host)?;
+
+        if host.chars().any(|c| matches!(c, 'A'..='Z')) {
+            let host = host.to_ascii_lowercase();
+
+            return Ok((i, Host::Owned(host)));
+        }
+
+        Ok((i, Host::Borrowed(host)))
+    }
+
+    fn parse_ipv4_addr(i: Input<'a>) -> ParseResult<'a, Self> {
+        let (i, addr) = ipv4::parse(i)?;
+
+        let addr = u8_to_utf8(addr)?;
+
+        Ok((i, Host::Borrowed(addr)))
+    }
+
+    fn parse_ipv6_addr(i: Input<'a>) -> ParseResult<'a, Self> {
+        let (i, addr) = map(
+            consumed(tuple((char('['), ipv6::parse, char(']')))),
+            |(c, _)| c,
+        )(i)?;
+
+        let addr = u8_to_utf8(addr)?;
+
+        Ok((i, Host::Borrowed(addr)))
+    }
+
     // Valid host subcomponents of an URI are defined as rfc3986 3.2.2.
     fn parse(i: Input<'a>) -> ParseResult<'a, Self> {
-        let (i, host) = alt((
-            // check if the host is a valid ipv4 address first as ipv4 addresses are also valid
-            // reg-names
-            ipv4::parse,
-            take_while1(Self::valid_reg_name_character),
-            map(
-                consumed(tuple((char('['), ipv6::parse, char(']')))),
-                |(c, _)| c,
-            ),
-        ))(i)?;
-        let host = u8_to_utf8(host)?;
-        Ok((i, Host(host)))
+        alt((
+            Self::parse_ipv4_addr,
+            Self::parse_reg_name,
+            Self::parse_ipv6_addr,
+        ))(i)
+    }
+
+    fn get_str(&self) -> &'_ str {
+        match self {
+            Host::Owned(ref str) => str,
+            Host::Borrowed(str) => str,
+        }
+    }
+}
+
+impl<'a> PartialEq for Host<'a> {
+    fn eq<'b>(&self, other: &Host<'b>) -> bool {
+        self.get_str() == other.get_str()
+    }
+
+    fn ne<'b>(&self, other: &Host<'b>) -> bool {
+        self.get_str() != other.get_str()
     }
 }
 
@@ -118,7 +192,7 @@ impl Port {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct Authority<'a> {
     user_info: Option<UserInfo<'a>>,
     host: Option<Host<'a>>,
@@ -130,7 +204,7 @@ impl<'a> Authority<'a> {
     fn new(user_info: Option<&'a str>, host: Option<&'a str>, port: Option<u32>) -> Self {
         Authority {
             user_info: user_info.map(UserInfo),
-            host: host.map(Host),
+            host: host.map(Host::Borrowed),
             port: port.map(Port),
         }
     }
@@ -243,7 +317,7 @@ impl<'a> Uri<'a> {
         fragment: Option<&'a str>,
     ) -> Self {
         Uri {
-            scheme: Scheme(scheme),
+            scheme: Scheme::Borrowed(scheme),
             authority,
             path: Path(path),
             query: query.map(Query),
@@ -263,8 +337,8 @@ impl<'a> Uri<'a> {
     /// ```
     #[inline]
     #[must_use]
-    pub const fn scheme(&self) -> &'a str {
-        self.scheme.0
+    pub fn scheme(&self) -> &'_ str {
+        self.scheme.get_str()
     }
 
     /// Get the user info part of an URI.
@@ -280,7 +354,13 @@ impl<'a> Uri<'a> {
     #[inline]
     #[must_use]
     pub fn user_info(&self) -> Option<&'a str> {
-        self.authority.and_then(|x| x.user_info).map(|x| x.0)
+        match self.authority {
+            Some(Authority {
+                user_info: Some(user_info),
+                ..
+            }) => Some(user_info.0),
+            _ => None,
+        }
     }
 
     /// Get the host of an URI.
@@ -298,8 +378,18 @@ impl<'a> Uri<'a> {
     /// ```
     #[inline]
     #[must_use]
-    pub fn host(&self) -> Option<&'a str> {
-        self.authority.and_then(|x| x.host).map(|x| x.0)
+    pub fn host(&self) -> Option<&'_ str> {
+        match self.authority {
+            Some(Authority {
+                host: Some(Host::Owned(ref str)),
+                ..
+            }) => Some(str),
+            Some(Authority {
+                host: Some(Host::Borrowed(str)),
+                ..
+            }) => Some(str),
+            _ => None,
+        }
     }
 
     /// Get the port of an URI if it exists. This function will not return the default port of a
@@ -319,7 +409,12 @@ impl<'a> Uri<'a> {
     #[inline]
     #[must_use]
     pub fn port(&self) -> Option<u32> {
-        self.authority.and_then(|x| x.port).map(|x| x.0)
+        match self.authority {
+            Some(Authority {
+                port: Some(port), ..
+            }) => Some(port.0),
+            _ => None,
+        }
     }
 
     /// Get the path of an URI. If the path is empty or the root path then this function will
@@ -376,10 +471,10 @@ impl<'a> Uri<'a> {
     }
 
     /// Attempt to parse a buffer into an URI.
-    /// The implemented URI parsing is somewhat limited. Values are not lowercased and
-    /// thus the following will not compare as equal `http://EXAMPLE.com` and `http://example.com` even
-    /// though they are defined to be. Parsing also does not preform url decoding and will leave hex
-    /// encoded characters such as `%20` as is. Parsing does however implement path normalization by
+    /// Parsing currently does not preform url decoding and will leave hex
+    /// encoded characters such as `%20` as is.
+    ///
+    /// Parsing does however implement path normalization by
     /// removing path segments in the form of `/./` and stripping double and trailing slashes.
     ///
     /// The following will all compare equal:
