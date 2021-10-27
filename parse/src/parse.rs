@@ -1,7 +1,8 @@
 use nom::{
     error::{Error, ErrorKind, ParseError},
     lib::std::str::{from_utf8, FromStr},
-    Err, IResult, Parser,
+    multi::{fold_many0, fold_many1, fold_many_m_n},
+    IResult, InputLength, Parser,
 };
 use std::str::Utf8Error;
 
@@ -47,117 +48,42 @@ pub fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>>
         .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
 }
 
-pub fn count_<I, O, E, F>(mut f: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
+/// Version of [`nom::multi::count`] that doesn't allocate
+pub fn count_<I, O, E, F>(parser: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
 where
-    I: Clone + PartialEq,
+    I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
     E: ParseError<I>,
 {
-    move |i: I| {
-        let mut input = i.clone();
-
-        for _ in 0..count {
-            let input_ = input.clone();
-            match f.parse(input_) {
-                Ok((i, _o)) => {
-                    input = i;
-                }
-                Err(Err::Error(e)) => {
-                    return Err(Err::Error(E::append(i, ErrorKind::Count, e)));
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-
-        Ok((input, ()))
-    }
+    many_m_n_(count, count, parser)
 }
 
-pub fn many_m_n_<I, O, E, F>(
-    min: usize,
-    max: usize,
-    mut parse: F,
-) -> impl FnMut(I) -> IResult<I, (), E>
+/// Version of [`nom::multi::many_m_n`] that doesn't allocate
+pub fn many_m_n_<I, O, E, F>(min: usize, max: usize, parse: F) -> impl FnMut(I) -> IResult<I, (), E>
 where
-    I: Clone + PartialEq,
+    I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
     E: ParseError<I>,
 {
-    move |mut input: I| {
-        for count in 0..max {
-            match parse.parse(input.clone()) {
-                Ok((tail, _value)) => {
-                    // do not allow parsers that do not consume input (causes infinite loops)
-                    if tail == input {
-                        return Err(Err::Error(E::from_error_kind(input, ErrorKind::ManyMN)));
-                    }
-
-                    input = tail;
-                }
-                Err(Err::Error(e)) => {
-                    if count < min {
-                        return Err(Err::Error(E::append(input, ErrorKind::ManyMN, e)));
-                    }
-                    return Ok((input, ()));
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-        }
-
-        Ok((input, ()))
-    }
+    fold_many_m_n(min, max, parse, || (), |_, _| ())
 }
 
-pub fn many0_<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, (), E>
+/// Version of [`nom::multi::many0`] that doesn't allocate
+pub fn many0_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
 where
-    I: Clone + PartialEq,
+    I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
     E: ParseError<I>,
 {
-    move |mut i: I| loop {
-        match f.parse(i.clone()) {
-            Err(Err::Error(_)) => return Ok((i, ())),
-            Err(e) => return Err(e),
-            Ok((i1, _o)) => {
-                if i1 == i {
-                    return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
-                }
-
-                i = i1;
-            }
-        }
-    }
+    fold_many0(parser, || (), |_, _| ())
 }
 
-pub fn many1_<I, O, E, F>(mut f: F) -> impl FnMut(I) -> IResult<I, (), E>
+/// Version of [`nom::multi::many1`] that doesn't allocate
+pub fn many1_<I, O, E, F>(parser: F) -> impl FnMut(I) -> IResult<I, (), E>
 where
-    I: Clone + PartialEq,
+    I: Clone + PartialEq + InputLength,
     F: Parser<I, O, E>,
     E: ParseError<I>,
 {
-    move |mut i: I| match f.parse(i.clone()) {
-        Err(Err::Error(err)) => Err(Err::Error(E::append(i, ErrorKind::Many1, err))),
-        Err(e) => Err(e),
-        Ok((i1, _o)) => {
-            i = i1;
-
-            loop {
-                match f.parse(i.clone()) {
-                    Err(Err::Error(_)) => return Ok((i, ())),
-                    Err(e) => return Err(e),
-                    Ok((i1, _o)) => {
-                        if i1 == i {
-                            return Err(Err::Error(E::from_error_kind(i, ErrorKind::Many1)));
-                        }
-
-                        i = i1;
-                    }
-                }
-            }
-        }
-    }
+    fold_many1(parser, || (), |_, _| ())
 }
