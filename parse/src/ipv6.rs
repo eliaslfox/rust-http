@@ -178,8 +178,8 @@ mod tests {
         for addr in addrs {
             println!("parsing addr: {}", addr);
             let result = assert_no_alloc(|| parse(addr.as_bytes()));
-            let (remaining, addr_) = result.unwrap();
-            assert_eq!(addr.as_bytes(), addr_);
+            let (remaining, new_addr) = result.unwrap();
+            assert_eq!(addr.as_bytes(), new_addr);
             assert!(remaining.is_empty());
         }
     }

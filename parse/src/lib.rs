@@ -6,12 +6,13 @@
     unused_crate_dependencies,
     clippy::pedantic
 )]
+#![allow(clippy::non_ascii_literal)]
 #![cfg_attr(docsrs, deny(broken_intra_doc_links))]
 
 //! Parse http requests.
 
 #[cfg(test)]
-use url as _;
+use ::url as _;
 
 #[cfg(all(test, debug_assertions))]
 use assert_no_alloc::AllocDisabler;
@@ -20,6 +21,7 @@ use assert_no_alloc::AllocDisabler;
 #[global_allocator]
 static A: AllocDisabler = AllocDisabler;
 
+mod idna;
 mod ipv4;
 mod ipv6;
 mod parse;
