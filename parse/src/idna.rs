@@ -669,18 +669,28 @@ fn idna_unicode_to_ascii(
     //     The length of the domain name, excluding the root label and its dot, is from 1 to 253.
     //     The length of each label is from 1 to 63.
     if verify_dns_length {
-        if domain_name
-            .split('.')
-            .rev()
-            .skip(1)
-            .any(|label| !matches!(label.len(), 1..=253))
-        {
+        let domain_name_len = if domain_name.ends_with('.') {
+            domain_name.len() - 1
+        } else {
+            domain_name.len()
+        };
+
+        if !matches!(domain_name_len, 1..=253) {
             return Err(IDNAProcessingError::InvalidDomainLength(
                 domain_name.into_owned(),
             ));
         }
 
+        let mut last_label = false;
         for label in domain_name.split('.') {
+            if last_label {
+                return Err(IDNAProcessingError::InvalidDomain(domain_name.into_owned()));
+            }
+
+            if label.is_empty() {
+                last_label = true;
+                continue;
+            }
             if !matches!(label.len(), 1..=63) {
                 return Err(IDNAProcessingError::InvalidLabelLength(label.to_owned()));
             }
@@ -720,12 +730,14 @@ mod test {
         io::{BufRead, BufReader},
     };
 
+    use crate::idna::idna_unicode_to_ascii;
+
     use super::idna_ascii_to_unicode;
 
+    // https://www.unicode.org/reports/tr46/#Conformance_Testing
     #[test]
     #[allow(clippy::similar_names)]
-    #[allow(unused_variables)]
-    fn test_idna_to_ascii() {
+    fn idna_conformance() {
         let file = File::open("./tests/IdnaTestV2.txt").unwrap();
         let lines = BufReader::new(file).lines();
 
@@ -747,15 +759,60 @@ mod test {
             let to_ascii_t = parts[5];
             let to_ascii_t_status = parts[6];
 
+            dbg!(&input);
+
+            let to_unicode_expected = if to_unicode.is_empty() {
+                input
+            } else {
+                to_unicode
+            };
+
+            let to_unicode_success = to_unicode_status.is_empty();
+
             let unicode_res = idna_ascii_to_unicode(input, true, true, true, true, false);
-            if to_unicode_status.is_empty() {
-                if to_unicode.is_empty() {
-                    assert_eq!(input, unicode_res.unwrap());
-                } else {
-                    assert_eq!(to_unicode, unicode_res.unwrap());
-                }
+            if to_unicode_success {
+                assert_eq!(to_unicode_expected, unicode_res.unwrap());
             } else {
                 assert!(unicode_res.is_err());
+            }
+
+            let to_ascii_n_expected = if to_ascii_n.is_empty() {
+                to_unicode_expected
+            } else {
+                to_ascii_n
+            };
+
+            let to_ascii_n_success = if to_ascii_n_status.is_empty() {
+                to_unicode_success
+            } else {
+                to_ascii_n_status == "[]"
+            };
+
+            let to_ascii_n_res = idna_unicode_to_ascii(input, true, true, true, true, false, true);
+
+            if to_ascii_n_success {
+                assert_eq!(to_ascii_n_expected, to_ascii_n_res.unwrap());
+            } else {
+                assert!(to_ascii_n_res.is_err());
+            }
+
+            let to_ascii_t_expected = if to_ascii_t.is_empty() {
+                to_ascii_n_expected
+            } else {
+                to_ascii_t
+            };
+
+            let to_ascii_t_success = if to_ascii_t_status.starts_with(" #") {
+                to_ascii_n_success
+            } else {
+                to_ascii_t_status.starts_with("[]")
+            };
+
+            let to_ascii_t_res = idna_unicode_to_ascii(input, true, true, true, true, true, true);
+            if to_ascii_t_success {
+                assert_eq!(to_ascii_t_expected, to_ascii_t_res.unwrap());
+            } else {
+                assert!(to_ascii_t_res.is_err());
             }
         }
     }
