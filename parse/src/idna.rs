@@ -22,7 +22,7 @@ use unicode_joining_type::{get_joining_type, JoiningType};
 use unicode_script::{Script, UnicodeScript};
 
 #[derive(Debug)]
-enum IDNAProcessingError {
+pub(crate) enum IDNAProcessingError {
     Utf8(Utf8Error),
     InvalidCharacter(char),
     InvalidLabel(String),
@@ -551,13 +551,15 @@ fn process_idna(
             }
 
             last_label = true;
-            out.push('.');
+            if rebuild_domain_name {
+                out.push('.');
+            }
             continue;
         }
 
         if first_label {
             first_label = false;
-        } else {
+        } else if rebuild_domain_name {
             out.push('.');
         }
 
@@ -620,7 +622,7 @@ fn process_idna(
 // IDNA ToASCII
 // https://www.unicode.org/reports/tr46/#ToASCII
 #[allow(clippy::fn_params_excessive_bools)]
-fn idna_unicode_to_ascii(
+pub(crate) fn idna_unicode_to_ascii(
     domain_name: &'_ str,
     check_hypnens: bool,
     check_bidi: bool,
@@ -702,6 +704,7 @@ fn idna_unicode_to_ascii(
 
 // IDNA ToUnicode
 // https://www.unicode.org/reports/tr46/#ToUnicode
+#[cfg(test)]
 #[allow(clippy::fn_params_excessive_bools)]
 fn idna_ascii_to_unicode(
     domain_name: &'_ str,
@@ -729,6 +732,8 @@ mod test {
         fs::File,
         io::{BufRead, BufReader},
     };
+
+    use assert_no_alloc::assert_no_alloc;
 
     use crate::idna::idna_unicode_to_ascii;
 
@@ -815,5 +820,14 @@ mod test {
                 assert!(to_ascii_t_res.is_err());
             }
         }
+    }
+
+    // Processing domain names comprised of only NR-labels should not require allocations
+    #[test]
+    fn test_idna_no_alloc() {
+        assert_no_alloc(|| {
+            let res = idna_unicode_to_ascii("example.com", true, true, true, true, false, true);
+            assert!(res.is_ok());
+        });
     }
 }
