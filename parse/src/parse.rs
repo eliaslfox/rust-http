@@ -4,16 +4,36 @@ use nom::{
     multi::{fold_many0, fold_many1, fold_many_m_n},
     IResult, InputLength, Parser,
 };
-use std::str::Utf8Error;
+use std::{num::ParseIntError, str::Utf8Error};
 
 /// Parse error types.
-#[derive(Debug, derive_more::From)]
+#[derive(Debug)]
 pub enum HttpParseError<I> {
     /// An individual nom parser failed.
     Nom(nom::error::Error<I>),
 
     /// A conversion from &[u8] to &str failed.
     Utf8(Utf8Error),
+
+    ParseIntError(ParseIntError),
+}
+
+impl<I> From<ParseIntError> for HttpParseError<I> {
+    fn from(v: ParseIntError) -> Self {
+        Self::ParseIntError(v)
+    }
+}
+
+impl<I> From<nom::error::Error<I>> for HttpParseError<I> {
+    fn from(v: nom::error::Error<I>) -> Self {
+        Self::Nom(v)
+    }
+}
+
+impl<I> From<Utf8Error> for HttpParseError<I> {
+    fn from(v: Utf8Error) -> Self {
+        Self::Utf8(v)
+    }
 }
 
 /// Input type for all parsers.
@@ -30,7 +50,7 @@ impl<I> nom::error::ParseError<I> for HttpParseError<I> {
     fn append(input: I, kind: ErrorKind, other: Self) -> Self {
         match other {
             HttpParseError::Nom(nom) => Error::append(input, kind, nom).into(),
-            HttpParseError::Utf8(_) => other,
+            HttpParseError::Utf8(_) | HttpParseError::ParseIntError(_) => other,
         }
     }
 }
@@ -45,6 +65,14 @@ pub(crate) fn u8_to_utf8(i: &'_ [u8]) -> Result<&'_ str, nom::Err<HttpParseError
 /// Convert a &[u8] to a unicode &str and then parse that string into a u32.
 pub(crate) fn u8_to_u32(i: &'_ [u8]) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>> {
     u32::from_str(u8_to_utf8(i)?)
+        .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
+}
+
+pub(crate) fn u8_to_u32_radix(
+    i: &'_ [u8],
+    radix: u32,
+) -> Result<u32, nom::Err<HttpParseError<&'_ [u8]>>> {
+    u32::from_str_radix(u8_to_utf8(i)?, radix)
         .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
 }
 

@@ -1,9 +1,9 @@
 #![warn(
     missing_copy_implementations,
     missing_debug_implementations,
-    missing_docs,
-    unreachable_pub,
-    unused_crate_dependencies,
+//    missing_docs,
+//    unreachable_pub,
+//    unused_crate_dependencies,
     clippy::pedantic
 )]
 #![allow(clippy::non_ascii_literal)]
@@ -25,7 +25,5 @@ mod idna;
 mod ipv4;
 mod ipv6;
 mod parse;
-mod uri;
 
 pub use crate::parse::{HttpParseError, Input, ParseResult};
-pub use uri::Uri;
