@@ -11,9 +11,6 @@
 
 //! Parse http requests.
 
-#[cfg(test)]
-use ::url as _;
-
 #[cfg(all(test, debug_assertions))]
 use assert_no_alloc::AllocDisabler;
 
@@ -26,5 +23,3 @@ mod ipv4;
 mod ipv6;
 mod parse;
 mod url;
-
-pub use crate::parse::{HttpParseError, Input, ParseResult};
