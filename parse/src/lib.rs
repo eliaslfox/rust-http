@@ -25,5 +25,6 @@ mod idna;
 mod ipv4;
 mod ipv6;
 mod parse;
+mod url;
 
 pub use crate::parse::{HttpParseError, Input, ParseResult};

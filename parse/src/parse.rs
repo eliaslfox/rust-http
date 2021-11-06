@@ -76,6 +76,14 @@ pub(crate) fn u8_to_u32_radix(
         .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
 }
 
+pub(crate) fn u8_to_u16_radix(
+    i: &'_ [u8],
+    radix: u32,
+) -> Result<u16, nom::Err<HttpParseError<&'_ [u8]>>> {
+    u16::from_str_radix(u8_to_utf8(i)?, radix)
+        .map_err(|_| nom::Err::Error(HttpParseError::from_error_kind(i, ErrorKind::Digit)))
+}
+
 /// Version of [`nom::multi::count`] that doesn't allocate
 pub(crate) fn count_<I, O, E, F>(parser: F, count: usize) -> impl FnMut(I) -> IResult<I, (), E>
 where

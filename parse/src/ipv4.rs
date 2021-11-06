@@ -16,8 +16,7 @@ pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, Ipv4Addr> {
         let (i, section) = parse_ipv4_section(u32::MAX)(i)?;
         let (i, _) = many_m_n_(0, 1, char('.'))(i)?;
 
-        // TODO: should this be section.to_ne_bytes()?
-        let [a, b, c, d] = section.to_be_bytes();
+        let [a, b, c, d] = section.to_ne_bytes();
 
         Ok((i, Ipv4Addr::new(a, b, c, d)))
     }
@@ -49,30 +48,32 @@ pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, Ipv4Addr> {
         Ok((i, Ipv4Addr::new(a, b, c, d)))
     }
 
-    fn parse_ipv4_three_dots(i: Input<'_>) -> ParseResult<'_, Ipv4Addr> {
-        let (i, section_a) = parse_ipv4_section(0xFF)(i)?;
-        let (i, _) = char('.')(i)?;
-        let (i, section_b) = parse_ipv4_section(0xFF)(i)?;
-        let (i, _) = char('.')(i)?;
-        let (i, section_c) = parse_ipv4_section(0xFF)(i)?;
-        let (i, _) = char('.')(i)?;
-        let (i, section_d) = parse_ipv4_section(0xFF)(i)?;
-        let (i, _) = many_m_n_(0, 1, char('.'))(i)?;
-
-        let a = section_a as u8;
-        let b = section_b as u8;
-        let c = section_c as u8;
-        let d = section_d as u8;
-
-        Ok((i, Ipv4Addr::new(a, b, c, d)))
-    }
-
     alt((
         parse_ipv4_three_dots,
         parse_ipv4_two_dots,
         parse_ipv4_one_dot,
         parse_ipv4_zero_dots,
     ))(i)
+}
+
+#[allow(clippy::many_single_char_names)]
+#[allow(clippy::cast_possible_truncation)]
+pub(crate) fn parse_ipv4_three_dots(i: Input<'_>) -> ParseResult<'_, Ipv4Addr> {
+    let (i, section_a) = parse_ipv4_section(0xFF)(i)?;
+    let (i, _) = char('.')(i)?;
+    let (i, section_b) = parse_ipv4_section(0xFF)(i)?;
+    let (i, _) = char('.')(i)?;
+    let (i, section_c) = parse_ipv4_section(0xFF)(i)?;
+    let (i, _) = char('.')(i)?;
+    let (i, section_d) = parse_ipv4_section(0xFF)(i)?;
+    let (i, _) = many_m_n_(0, 1, char('.'))(i)?;
+
+    let a = section_a as u8;
+    let b = section_b as u8;
+    let c = section_c as u8;
+    let d = section_d as u8;
+
+    Ok((i, Ipv4Addr::new(a, b, c, d)))
 }
 
 fn parse_ipv4_section(max: u32) -> impl FnMut(&'_ [u8]) -> ParseResult<'_, u32>
