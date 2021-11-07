@@ -22,4 +22,5 @@ mod idna;
 mod ipv4;
 mod ipv6;
 mod parse;
+mod percent_encode;
 mod url;
