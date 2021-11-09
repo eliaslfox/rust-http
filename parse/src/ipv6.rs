@@ -4,14 +4,12 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while_m_n},
     character::{complete::char, is_hex_digit},
-    combinator::{map, success},
+    combinator::{map, map_res, success},
     sequence::tuple,
+    AsChar,
 };
 
-use crate::{
-    ipv4::parse_ipv4_three_dots,
-    parse::{u8_to_u16_radix, Input, ParseResult},
-};
+use crate::{ipv4::parse_ipv4_three_dots, parse::ParseResult};
 
 /// Parse an ipv6 address using the syntax defined in
 /// [RFC3986](https://tools.ietf.org/html/rfc3986#section-3.2.2).
@@ -26,7 +24,7 @@ use crate::{
 //                  / [ *4( h16 ":" ) h16 ] "::"              ls32
 //                  / [ *5( h16 ":" ) h16 ] "::"              h16
 //                  / [ *6( h16 ":" ) h16 ] "::"
-pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+pub(crate) fn parse(i: &'_ str) -> ParseResult<Ipv6Addr> {
     alt((
         parse_ipv6_1,
         parse_ipv6_2,
@@ -42,16 +40,14 @@ pub(crate) fn parse(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // h16 = 1*4HEXDIG
-fn parse_h16(i: Input<'_>) -> ParseResult<'_, u16> {
-    let (i, h16) = take_while_m_n(1, 4, is_hex_digit)(i)?;
-
-    let h16 = u8_to_u16_radix(h16, 16)?;
-
-    Ok((i, h16))
+fn parse_h16(i: &'_ str) -> ParseResult<u16> {
+    map_res(take_while_m_n(1, 4, AsChar::is_hex_digit), |h16| {
+        u16::from_str_radix(h16, 16)
+    })(i)
 }
 
 // ls32 = ( h16 ":" h16 ) / IPv4address
-fn parse_ls32(i: Input<'_>) -> ParseResult<'_, (u16, u16)> {
+fn parse_ls32(i: &'_ str) -> ParseResult<(u16, u16)> {
     let parse_double_h16 = map(tuple((parse_h16, char(':'), parse_h16)), |(a, _, b)| (a, b));
 
     alt((
@@ -66,7 +62,7 @@ fn parse_ls32(i: Input<'_>) -> ParseResult<'_, (u16, u16)> {
 }
 
 // h16_colon = h16 ":"
-fn parse_h16_colon(i: Input<'_>) -> ParseResult<'_, u16> {
+fn parse_h16_colon(i: &'_ str) -> ParseResult<u16> {
     let (i, h16) = parse_h16(i)?;
     let (i, _) = char(':')(i)?;
 
@@ -74,7 +70,7 @@ fn parse_h16_colon(i: Input<'_>) -> ParseResult<'_, u16> {
 }
 
 // 6( h16 ":" ) ls32
-fn parse_ipv6_1(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_1(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, h16_a) = parse_h16_colon(i)?;
     let (i, h16_b) = parse_h16_colon(i)?;
     let (i, h16_c) = parse_h16_colon(i)?;
@@ -90,7 +86,7 @@ fn parse_ipv6_1(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // "::" 5( h16 ":" ) ls32
-fn parse_ipv6_2(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_2(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, _) = tag("::")(i)?;
     let (i, h16_b) = parse_h16_colon(i)?;
     let (i, h16_c) = parse_h16_colon(i)?;
@@ -105,10 +101,10 @@ fn parse_ipv6_2(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
     ))
 }
 
-fn parse_stuff<const N: usize>(mut i: &'_ [u8]) -> (&'_ [u8], [u16; N]) {
+fn parse_stuff<const N: usize>(mut i: &'_ str) -> (&'_ str, [u16; N]) {
     let mut out = [0_u16; N];
     let mut p = 0;
-    if i.starts_with(b"::") {
+    if i.starts_with("::") {
         return (i, out);
     }
     while p < N {
@@ -117,10 +113,10 @@ fn parse_stuff<const N: usize>(mut i: &'_ [u8]) -> (&'_ [u8], [u16; N]) {
                 i = i_;
                 out[p] = h16;
                 p += 1;
-                if i.starts_with(b"::") {
+                if i.starts_with("::") {
                     return (i, out);
                 }
-                if i.starts_with(b":") {
+                if i.starts_with(':') {
                     i = &i[1..];
                 }
             }
@@ -132,7 +128,7 @@ fn parse_stuff<const N: usize>(mut i: &'_ [u8]) -> (&'_ [u8], [u16; N]) {
 }
 
 // [ h16 ] "::" 4( h16 ":" ) ls32
-fn parse_ipv6_3(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_3(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, h16_a) = alt((parse_h16, success(0)))(i)?;
     let (i, _) = tag("::")(i)?;
     let (i, h16_c) = parse_h16_colon(i)?;
@@ -148,7 +144,7 @@ fn parse_ipv6_3(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *1( h16 ":" ) h16 ] "::" 3( h16 ":" ) ls32
-fn parse_ipv6_4(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_4(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, [h16_a, h16_b]) = parse_stuff::<2>(i);
     let (i, _) = tag("::")(i)?;
     let (i, h16_d) = parse_h16_colon(i)?;
@@ -163,7 +159,7 @@ fn parse_ipv6_4(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *2( h16 ":" ) h16 ] "::" 2( h16 ":" ) ls32
-fn parse_ipv6_5(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_5(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, [h16_a, h16_b, h16_c]) = parse_stuff::<3>(i);
     let (i, _) = tag("::")(i)?;
     let (i, h16_e) = parse_h16_colon(i)?;
@@ -177,7 +173,7 @@ fn parse_ipv6_5(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *3( h16 ":" ) h16 ] "::" h16 ":" ls32
-fn parse_ipv6_6(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_6(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, [h16_a, h16_b, h16_c, h16_d]) = parse_stuff::<4>(i);
     let (i, _) = tag("::")(i)?;
     let (i, h16_f) = parse_h16_colon(i)?;
@@ -190,7 +186,7 @@ fn parse_ipv6_6(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *4( h16 ":" ) h16 ] "::" ls32
-fn parse_ipv6_7(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_7(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, arr) = parse_stuff::<5>(i);
     let [h16_a, h16_b, h16_c, h16_d, h16_e] = arr;
     let (i, _) = tag("::")(i)?;
@@ -203,7 +199,7 @@ fn parse_ipv6_7(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *5( h16 ":" ) h16 ] "::" h16
-fn parse_ipv6_8(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_8(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, [h16_a, h16_b, h16_c, h16_d, h16_e, h16_f]) = parse_stuff::<6>(i);
     let (i, _) = tag("::")(i)?;
     let (i, h16_h) = parse_h16(i)?;
@@ -215,7 +211,7 @@ fn parse_ipv6_8(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
 }
 
 // [ *6( h16 ":" ) h 16 ] "::"
-fn parse_ipv6_9(i: Input<'_>) -> ParseResult<'_, Ipv6Addr> {
+fn parse_ipv6_9(i: &'_ str) -> ParseResult<Ipv6Addr> {
     let (i, [h16_a, h16_b, h16_c, h16_d, h16_e, h16_f, h16_g]) = parse_stuff::<7>(i);
     let (i, _) = tag("::")(i)?;
 
@@ -232,46 +228,46 @@ mod tests {
 
     #[test]
     fn test_parse_ipv6() {
-        let addrs: Vec<(Ipv6Addr, &[u8])> = vec![
+        let addrs: Vec<(Ipv6Addr, &'_ str)> = vec![
             (
                 Ipv6Addr::new(
                     0xABCD, 0xEF01, 0x2345, 0x6789, 0xABCD, 0xEF01, 0x2345, 0x6789,
                 ),
-                b"ABCD:EF01:2345:6789:ABCD:EF01:2345:6789",
+                "ABCD:EF01:2345:6789:ABCD:EF01:2345:6789",
             ),
             (
                 Ipv6Addr::new(0x2001, 0xDB8, 0x0, 0x0, 0x8, 0x800, 0x200C, 0x417A),
-                b"2001:DB8:0:0:8:800:200C:417A",
+                "2001:DB8:0:0:8:800:200C:417A",
             ),
             (
                 Ipv6Addr::new(0xFF01, 0, 0, 0, 0, 0, 0, 0x101),
-                b"FF01:0:0:0:0:0:0:101",
+                "FF01:0:0:0:0:0:0:101",
             ),
-            (Ipv6Addr::LOCALHOST, b"0:0:0:0:0:0:0:1"),
-            (Ipv6Addr::UNSPECIFIED, b"0:0:0:0:0:0:0:0"),
-            (Ipv6Addr::new(0xFF01, 0, 0, 0, 0, 0, 0, 0x101), b"FF01::101"),
-            (Ipv6Addr::LOCALHOST, b"::1"),
-            (Ipv6Addr::UNSPECIFIED, b"::"),
+            (Ipv6Addr::LOCALHOST, "0:0:0:0:0:0:0:1"),
+            (Ipv6Addr::UNSPECIFIED, "0:0:0:0:0:0:0:0"),
+            (Ipv6Addr::new(0xFF01, 0, 0, 0, 0, 0, 0, 0x101), "FF01::101"),
+            (Ipv6Addr::LOCALHOST, "::1"),
+            (Ipv6Addr::UNSPECIFIED, "::"),
             (
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0xD01, 0x4403),
-                b"0:0:0:0:0:0:13.1.68.3",
+                "0:0:0:0:0:0:13.1.68.3",
             ),
             (
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0xFFFF, 0x8190, 0x3426),
-                b"0:0:0:0:0:FFFF:129.144.52.38",
+                "0:0:0:0:0:FFFF:129.144.52.38",
             ),
             (
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0xD01, 0x4403),
-                b"::13.1.68.3",
+                "::13.1.68.3",
             ),
             (
                 Ipv6Addr::new(0xF, 0, 0, 0, 0, 0, 0xD01, 0x4403),
-                b"F::13.1.68.3",
+                "F::13.1.68.3",
             ),
-            (Ipv6Addr::new(0xFF01, 0, 0, 0, 0, 1, 1, 1), b"FF01::1:1:1"),
+            (Ipv6Addr::new(0xFF01, 0, 0, 0, 0, 1, 1, 1), "FF01::1:1:1"),
             (
                 Ipv6Addr::new(0, 0, 0, 0, 0, 0xFFFF, 0x8190, 0x3426),
-                b"::FFFF:129.144.52.38",
+                "::FFFF:129.144.52.38",
             ),
         ];
 

@@ -329,7 +329,7 @@ fn is_domain_bidi(label: &'_ str) -> bool {
 // https://www.rfc-editor.org/rfc/rfc5893.html#section-2
 fn valid_bidi_rtl(label: &'_ str) -> bool {
     // In an RTL label, if an EN is present, no AN may be present, and vice versa.
-    let mut aribic_number = false;
+    let mut arabic_number = false;
     let mut european_number = false;
 
     // In an RTL label, only characters with the Bidi properties R, AL,
@@ -345,14 +345,14 @@ fn valid_bidi_rtl(label: &'_ str) -> bool {
             | BidiClass::BoundaryNeutral
             | BidiClass::NonspacingMark => continue,
             BidiClass::ArabicNumber => {
-                aribic_number = true;
+                arabic_number = true;
                 if european_number {
                     return false;
                 }
             }
             BidiClass::EuropeanNumber => {
                 european_number = true;
-                if aribic_number {
+                if arabic_number {
                     return false;
                 }
             }
